@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 // ───── Current Crate Imports ────────────────────────────────────────────── //
 
-use super::components::TilemapTexture;
+use super::components::TilesetTexture;
 
 // ───── Body ─────────────────────────────────────────────────────────────── //
 
@@ -16,11 +16,22 @@ type TilesetIdx = usize;
 /// Asset, `Handle<TileMap>` we will load from asset_server
 #[derive(TypeUuid, TypePath)]
 #[uuid = "e51081d0-6168-4881-a1c6-4249b2000d7f"]
-pub struct TileMapAsset {
+pub struct TilemapAsset {
+    /// Parsed `.tmx` file from Tiled.
     pub map: tiled::Map,
-    pub tilemap_textures: HashMap<TilesetIdx, TilemapTexture>,
+    /// Stores pairs of tileset_index and actual `TilesetTexture` container,
+    /// loaded from disk.
+    pub tilemap_textures: HashMap<TilesetIdx, TilesetTexture>,
+    /// When we loaded all individual tile images, we need to pack them all
+    /// into single atlases. This field stores correlation between
+    /// `tileset_index` and actual `Handle<TextureAtlas>`.
     pub atlases: HashMap<TilesetIdx, Handle<TextureAtlas>>,
+    /// We have to know where every single tile-id placed in it's tileset
+    /// atlas for playing animation purposes.
     pub atlases_offsets: HashMap<TilesetIdx, HashMap<tiled::TileId, usize>>,
+    /// Needs for linking every loaded individual tile-id to it's image.
+    /// Contains (tileset_index, tile_id) pairs as `key` and image offset in
+    /// `TilesetTexture::Vector(tile_images)` container as `value`.
     pub tile_image_offsets: HashMap<(TilesetIdx, tiled::TileId), u32>,
 }
 
@@ -70,7 +81,7 @@ impl AssetLoader for TiledLoader {
                 .load_tmx_map(load_context.path())
                 .map_err(|e| anyhow::anyhow!("Could not load TMX map: {e}"))?;
 
-            // `dependencies` contains single tile image paths if they are
+            // `dependencies` contains single tile image paths if they existing
             // `tilemap_textures` contains textures with idx from enumerate()
 
             // `tile_image_offsets` contains some strange value: idx from
@@ -78,7 +89,7 @@ impl AssetLoader for TiledLoader {
             let (dependencies, tilemap_textures, tile_image_offsets) =
                 get_tilemaps_with_deps(&map, load_context);
 
-            let asset_map = TileMapAsset {
+            let asset_map = TilemapAsset {
                 map: map.clone(),
                 tilemap_textures,
                 atlases: HashMap::new(),
@@ -106,7 +117,7 @@ fn get_tilemaps_with_deps<'a>(
     load_context: &mut bevy::asset::LoadContext<'_>,
 ) -> (
     Vec<AssetPath<'a>>,
-    HashMap<usize, TilemapTexture>,
+    HashMap<usize, TilesetTexture>,
     HashMap<(usize, u32), u32>,
 ) {
     // We will pack into this variables in the next cycle
@@ -138,7 +149,7 @@ fn get_tilemaps_with_deps<'a>(
                         dependencies.push(asset_path);
                     }
                 }
-                TilemapTexture::Vector(tile_images)
+                TilesetTexture::Vector(tile_images)
             }
             Some(img) => {
                 let tile_path = img.source.clone();
@@ -147,7 +158,7 @@ fn get_tilemaps_with_deps<'a>(
                     load_context.get_handle(asset_path.clone());
                 dependencies.push(asset_path);
 
-                TilemapTexture::Single(texture.clone())
+                TilesetTexture::Single(texture.clone())
             }
         };
         tilemap_textures.insert(idx, tilemap_texture);
