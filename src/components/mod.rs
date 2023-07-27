@@ -2,7 +2,7 @@
 //! `LayerStorage` - stores all layers of the map.
 //! `TileStorage` - stores all tiles of the map.
 //! `TilePos` - represents integer tile position in the tilemap.
-//! `TilemapTexture` - stores image handles for the tilesets.
+//! `TilesetTexture` - stores image handles for the tilesets.
 //! `Tile` - marker component.
 //! `Object` - marker component
 
@@ -23,16 +23,16 @@ mod tile_pos;
 
 #[derive(Component, Reflect, Clone, Debug, Hash, PartialEq, Eq)]
 #[reflect(Component)]
-pub enum TilemapTexture {
+pub enum TilesetTexture {
     /// All textures for tiles are inside a single image asset.
     Single(Handle<Image>),
     /// One texture for each tile.
     Vector(Vec<Handle<Image>>),
 }
 
-impl Default for TilemapTexture {
+impl Default for TilesetTexture {
     fn default() -> Self {
-        TilemapTexture::Single(Default::default())
+        TilesetTexture::Single(Default::default())
     }
 }
 

@@ -24,7 +24,7 @@ mod resources;
 
 /// Groups all used types.
 pub mod prelude {
-    pub use super::asset_loader::TileMapAsset;
+    pub use super::asset_loader::TilemapAsset;
     pub use super::components::{
         LayerStorage, TilePos, TileStorage, TileStorageError,
     };

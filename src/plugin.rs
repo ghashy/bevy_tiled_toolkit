@@ -7,20 +7,20 @@ use bevy::utils::HashMap;
 
 // ───── Current Crate Imports ────────────────────────────────────────────── //
 
-use crate::asset_loader::TileMapAsset;
 use crate::asset_loader::TiledLoader;
+use crate::asset_loader::TilemapAsset;
 use crate::components::Animation;
 use crate::components::LayerStorage;
 use crate::components::Tile;
 use crate::components::TileStorage;
-use crate::components::TilemapTexture;
+use crate::components::TilesetTexture;
 
 // ───── Body ─────────────────────────────────────────────────────────────── //
 
 /// This is a `Bundle` for spawning tiled tilemap.
 #[derive(Default, Bundle)]
 pub struct TiledMapBundle {
-    pub tiled_map: Handle<TileMapAsset>,
+    pub tiled_map: Handle<TilemapAsset>,
     pub transform: Transform,
     pub layers_storage: LayerStorage,
     pub tile_storage: TileStorage,
@@ -35,7 +35,7 @@ impl Plugin for TiledToolkitPlugin {
             // Custom asset loaders
             .add_asset_loader(TiledLoader)
             // Assets
-            .add_asset::<TileMapAsset>()
+            .add_asset::<TilemapAsset>()
             // States
             .add_state::<TilemapLoadState>()
             // Resources
@@ -69,7 +69,7 @@ enum TilemapLoadState {
 
 fn listen_for_tilemap_loading(
     mut next_state: ResMut<NextState<TilemapLoadState>>,
-    tilemap: Query<Added<Handle<TileMapAsset>>>,
+    tilemap: Query<Added<Handle<TilemapAsset>>>,
 ) {
     if let Some(_) = tilemap.iter().next() {
         next_state.set(TilemapLoadState::Loading);
@@ -78,7 +78,7 @@ fn listen_for_tilemap_loading(
 
 fn check_tilemap_load_state(
     mut next_state: ResMut<NextState<TilemapLoadState>>,
-    tilemap: Query<&Handle<TileMapAsset>>,
+    tilemap: Query<&Handle<TilemapAsset>>,
     asset_server: Res<AssetServer>,
 ) {
     if tilemap.iter().count() != 1 {
@@ -92,9 +92,8 @@ fn check_tilemap_load_state(
 }
 
 fn setup_atlases(
-    mut commands: Commands,
-    tilemap_handle: Query<&Handle<TileMapAsset>>,
-    mut tilemaps: ResMut<Assets<TileMapAsset>>,
+    tilemap_handle: Query<&Handle<TilemapAsset>>,
+    mut tilemaps: ResMut<Assets<TilemapAsset>>,
     mut textures: ResMut<Assets<Image>>,
     asset_server: Res<AssetServer>,
     mut next_state: ResMut<NextState<TilemapLoadState>>,
@@ -105,7 +104,7 @@ fn setup_atlases(
         // In this case there is expected single spritesheet image
         if let Some(ref tls_image) = tls.image {
             let handle = match tilemap_asset.tilemap_textures.get(&tls_idx) {
-                Some(TilemapTexture::Single(handle)) => handle,
+                Some(TilesetTexture::Single(handle)) => handle,
                 _ => panic!("Error: expected single image"),
             };
 
@@ -132,7 +131,7 @@ fn setup_atlases(
         } else {
             // In this case there is expected vec with individual images
             let handles = match tilemap_asset.tilemap_textures.get(&tls_idx) {
-                Some(TilemapTexture::Vector(handles)) => handles,
+                Some(TilesetTexture::Vector(handles)) => handles,
                 _ => panic!("Error: expected vector of images"),
             };
             let mut atlas_builder = TextureAtlasBuilder::default()
@@ -178,10 +177,10 @@ fn setup_atlases(
 
 fn system_process_loaded_maps(
     mut commands: Commands,
-    maps_events: EventReader<AssetEvent<TileMapAsset>>,
-    maps: ResMut<Assets<TileMapAsset>>,
+    maps_events: EventReader<AssetEvent<TilemapAsset>>,
+    maps: ResMut<Assets<TilemapAsset>>,
     mut tile_map_query: Query<(
-        &Handle<TileMapAsset>,
+        &Handle<TilemapAsset>,
         &mut TileStorage,
         &mut LayerStorage,
     )>,
@@ -228,7 +227,7 @@ fn spawn_layer(
     layer_idx: usize,
     commands: &mut Commands,
     asset_server: &Res<AssetServer>,
-    tilemap_asset: &TileMapAsset,
+    tilemap_asset: &TilemapAsset,
 ) -> Entity {
     let layer_entity = commands
         .spawn((
@@ -259,11 +258,7 @@ fn spawn_layer(
                                     {
                                         Some(t) => t,
                                         None => {
-                                            log::warn!(
-                                                "No tile at x: {}, y: {}",
-                                                x,
-                                                y
-                                            );
+                                            // Skip empty tile
                                             continue;
                                         }
                                     };
@@ -273,8 +268,7 @@ fn spawn_layer(
                                     let mapped_x = x;
                                     let mapped_y = mapped_y as i32;
 
-                                    let tileset_idx =
-                                        layer_tile.tileset_index();
+                                    let tls_idx = layer_tile.tileset_index();
                                     let layer_tile_data =
                                         match layer.get_tile_data(x, y) {
                                             Some(t) => t,
@@ -286,11 +280,11 @@ fn spawn_layer(
                                     };
                                     let texture_atlas = match tilemap_asset
                                         .atlases
-                                        .get(&tileset_idx)
+                                        .get(&tls_idx)
                                     {
                                         Some(t) => t.clone(),
                                         None => {
-                                            error!("There are no atlas for tilemap with index {}", tileset_idx);
+                                            error!("There are no atlas for tilemap with index {}", tls_idx);
                                             continue;
                                         }
                                     };
@@ -326,6 +320,14 @@ fn spawn_layer(
                                         };
                                         (k.clone(), v)
                                     }).collect();
+
+                                    add_animation_if_needed(
+                                        tile,
+                                        tilemap_asset,
+                                        &tls_idx,
+                                        commands,
+                                        tile_entity,
+                                    );
 
                                     commands
                                         .entity(tile_entity)
@@ -394,25 +396,13 @@ fn spawn_layer(
 
                 if let Some(tile) = obj.get_tile() {
                     if let Some(tile) = tile.get_tile() {
-                        if let Some(ref frames) = tile.animation {
-                            if let Some(frame) = frames.first() {
-                                commands.entity(obj_entity).insert((
-                                    Animation {
-                                        frames: frames.clone(),
-                                        current_frame: 0,
-                                        offsets: tilemap_asset
-                                            .atlases_offsets
-                                            .get(tls_idx)
-                                            .unwrap()
-                                            .clone(),
-                                        timer: Timer::from_seconds(
-                                            frame.duration as f32 / 100.,
-                                            TimerMode::Repeating,
-                                        ),
-                                    },
-                                ));
-                            }
-                        }
+                        add_animation_if_needed(
+                            tile,
+                            tilemap_asset,
+                            tls_idx,
+                            commands,
+                            obj_entity,
+                        );
                     }
                 };
 
@@ -431,36 +421,34 @@ fn spawn_layer(
     layer_entity
 }
 
-fn events_to_vectors(
-    mut maps_events: EventReader<AssetEvent<TileMapAsset>>,
-) -> Vec<Handle<TileMapAsset>> {
-    let mut changed_maps = Vec::<Handle<TileMapAsset>>::default();
-    for event in maps_events.iter() {
-        match event {
-            AssetEvent::Created { handle } => {
-                log::info!("Map added!");
-                // Handle of event is already Weak
-                changed_maps.push(handle.clone_weak());
-            }
-            AssetEvent::Modified { handle } => {
-                log::info!("Map changed!");
-                changed_maps.push(handle.clone_weak());
-            }
-            AssetEvent::Removed { handle: _ } => {
-                log::info!("Map removed!");
-            }
-        }
-    }
-    changed_maps
-}
-
-#[allow(dead_code)]
-fn handle_structure(
-    obj_layer: tiled::ObjectLayer,
-    _tilemap_texture: &TilemapTexture,
+fn add_animation_if_needed(
+    tile: tiled::Tile,
+    tilemap_asset: &TilemapAsset,
+    tls_idx: &usize,
+    commands: &mut Commands,
+    entity: Entity,
 ) {
-    for _object in obj_layer.objects() {
-        //
+    if let Some(ref frames) = tile.animation {
+        if let Some(frame) = frames.first() {
+            let atlas_offsets = match tilemap_asset.atlases_offsets.get(tls_idx)
+            {
+                // Tiles packed into atlas are unordered, we need offsets
+                Some(ofsts) => ofsts.clone(),
+                // If there are no offsets, it means that all tiles are ordered
+                // and we will use tile-id as offsets.
+                None => HashMap::new(),
+            };
+            let timer = Timer::new(
+                Duration::from_millis(frame.duration as u64),
+                TimerMode::Repeating,
+            );
+            commands.entity(entity).insert((Animation {
+                frames: frames.clone(),
+                current_frame: 0,
+                offsets: atlas_offsets,
+                timer,
+            },));
+        }
     }
 }
 
@@ -641,19 +629,6 @@ fn handle_structure(
 //     }
 // }
 
-fn tiled_color_to_bevy(color: &tiled::Color) -> Color {
-    let red = color.red as f32 / 255.;
-    let green = color.green as f32 / 255.;
-    let blue = color.blue as f32 / 255.;
-    let alpha = color.alpha as f32 / 255.;
-    Color::Rgba {
-        red,
-        green,
-        blue,
-        alpha,
-    }
-}
-
 fn animate_entities(
     mut query: Query<(&mut Animation, &mut TextureAtlasSprite)>,
     time: Res<Time>,
@@ -664,14 +639,59 @@ fn animate_entities(
                 animation.current_frame,
                 animation.frames.len() as u32 - 1,
             );
+            let tile_id =
+                animation.frames.get(fr_idx as usize).unwrap().tile_id;
             animation.current_frame = fr_idx;
-            atlas.index = *animation.offsets.get(&fr_idx).unwrap();
+            atlas.index = match animation.offsets.get(&tile_id) {
+                // Atlas was created from tiles, (unordered tiles)
+                Some(v) => *v,
+                // Atlas was loaded from image, (ordered tiles)
+                None => tile_id as usize,
+            };
             let fr_dur =
                 animation.frames.get(fr_idx as usize).unwrap().duration;
             animation
                 .timer
                 .set_duration(Duration::from_millis(fr_dur as u64));
         }
+    }
+}
+
+// ───── Utility functions ────────────────────────────────────────────────── //
+
+fn events_to_vectors(
+    mut maps_events: EventReader<AssetEvent<TilemapAsset>>,
+) -> Vec<Handle<TilemapAsset>> {
+    let mut changed_maps = Vec::<Handle<TilemapAsset>>::default();
+    for event in maps_events.iter() {
+        match event {
+            AssetEvent::Created { handle } => {
+                log::info!("Map added!");
+                // Handle of event is already Weak
+                changed_maps.push(handle.clone_weak());
+            }
+            AssetEvent::Modified { handle } => {
+                log::info!("Map changed!");
+                changed_maps.push(handle.clone_weak());
+            }
+            AssetEvent::Removed { handle: _ } => {
+                log::info!("Map removed!");
+            }
+        }
+    }
+    changed_maps
+}
+
+fn tiled_color_to_bevy(color: &tiled::Color) -> Color {
+    let red = color.red as f32 / 255.;
+    let green = color.green as f32 / 255.;
+    let blue = color.blue as f32 / 255.;
+    let alpha = color.alpha as f32 / 255.;
+    Color::Rgba {
+        red,
+        green,
+        blue,
+        alpha,
     }
 }
 
