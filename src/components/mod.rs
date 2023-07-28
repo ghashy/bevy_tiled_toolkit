@@ -51,30 +51,5 @@ pub struct Animation {
 #[derive(Component)]
 pub struct Object {
     name: Option<Name>,
-    properties: HashMap<String, String>,
-}
-
-/// Component for marking objects loaded from tiled.
-#[derive(Component)]
-pub struct Tile {
-    pub properties: HashMap<String, PropertyValue>,
-}
-
-pub enum PropertyValue {
-    /// A boolean value. Corresponds to the `bool` property type.
-    BoolValue(bool),
-    /// A floating point value. Corresponds to the `float` property type.
-    FloatValue(f32),
-    /// A signed integer value. Corresponds to the `int` property type.
-    IntValue(i32),
-    /// A color value. Corresponds to the `color` property type.
-    ColorValue(Color),
-    /// A string value. Corresponds to the `string` property type.
-    StringValue(String),
-    /// A filepath value. Corresponds to the `file` property type.
-    /// Holds the path relative to the map or tileset.
-    FileValue(String),
-    /// An object ID value. Corresponds to the `object` property type.
-    /// Holds the id of a referenced object, or 0 if unset.
-    ObjectValue(u32),
+    // properties: HashMap<String, String>,
 }

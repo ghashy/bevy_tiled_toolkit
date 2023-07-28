@@ -14,9 +14,9 @@ use crate::asset_loader::TiledLoader;
 use crate::asset_loader::TilemapAsset;
 use crate::components::Animation;
 use crate::components::LayerStorage;
-use crate::components::Tile;
 use crate::components::TileStorage;
 use crate::components::TilesetTexture;
+use crate::resources::TiledComponentResource;
 
 // ───── Body ─────────────────────────────────────────────────────────────── //
 
@@ -42,6 +42,7 @@ impl Plugin for TiledToolkitPlugin {
             // States
             .add_state::<TilemapLoadState>()
             // Resources
+            .init_resource::<TiledComponentResource>()
             .insert_resource(Msaa::Off)
             // Systems
             .add_systems(
@@ -188,6 +189,7 @@ fn system_process_loaded_maps(
         &mut LayerStorage,
     )>,
     asset_server: Res<AssetServer>,
+    mut tiled_components: Res<TiledComponentResource>,
 ) {
     let changed_maps = events_to_vectors(maps_events);
 
@@ -211,6 +213,7 @@ fn system_process_loaded_maps(
                     &mut commands,
                     &asset_server,
                     tilemap_asset,
+                    &mut tiled_components,
                 );
                 let layer_name = Name::new(layer.name.clone());
 
@@ -231,6 +234,7 @@ fn spawn_layer(
     commands: &mut Commands,
     asset_server: &Res<AssetServer>,
     tilemap_asset: &TilemapAsset,
+    tiled_components: &mut Res<TiledComponentResource>,
 ) -> Entity {
     let layer_entity = commands
         .spawn((
@@ -294,7 +298,7 @@ fn spawn_layer(
                                     };
 
                                     // Spawn tile
-                                    let tile_entity = commands
+                                    let mut tile_entity_commands = commands
                                         .spawn(SpriteSheetBundle {
                                             transform: Transform::from_xyz(
                                                 (mapped_x * tile_width) as f32
@@ -314,21 +318,15 @@ fn spawn_layer(
                                             },
                                             texture_atlas,
                                             ..default()
-                                        })
-                                        .id();
+                                        });
 
-                                    let properties = tile.properties.iter().map(|(k, v)| {
-                                        let v = match v {
-                                            tiled::PropertyValue::BoolValue(v) => crate::components::PropertyValue::BoolValue(*v),
-                                            tiled::PropertyValue::FloatValue(v) => crate::components::PropertyValue::FloatValue(*v),
-                                            tiled::PropertyValue::IntValue(v) => crate::components::PropertyValue::IntValue(*v),
-                                            tiled::PropertyValue::ColorValue(v) => crate::components::PropertyValue::ColorValue(tiled_color_to_bevy(v)),
-                                            tiled::PropertyValue::StringValue(v) => crate::components::PropertyValue::StringValue(v.clone()),
-                                            tiled::PropertyValue::FileValue(v) => crate::components::PropertyValue::FileValue(v.clone()),
-                                            tiled::PropertyValue::ObjectValue(v) => crate::components::PropertyValue::ObjectValue(*v),
-                                        };
-                                        (k.clone(), v)
-                                    }).collect();
+                                    spawn_tiled_components(
+                                        &tile,
+                                        tiled_components,
+                                        &mut tile_entity_commands,
+                                    );
+
+                                    let tile_entity = tile_entity_commands.id();
 
                                     add_animation_if_needed(
                                         &tile,
@@ -338,9 +336,17 @@ fn spawn_layer(
                                         tile_entity,
                                     );
 
-                                    commands
-                                        .entity(tile_entity)
-                                        .insert(Tile { properties });
+                                    add_rigidbodies_if_needed(
+                                        &tile,
+                                        commands,
+                                        tile_entity,
+                                        tile_width as f32,
+                                        tile_height as f32,
+                                    );
+
+                                    // commands
+                                    //     .entity(tile_entity)
+                                    //     .insert(Tile { properties });
 
                                     commands
                                         .entity(layer_entity)
@@ -411,8 +417,8 @@ fn spawn_layer(
                 let mapped_y = map_height - obj.y + obj_height * 0.5;
 
                 // Spawn object
-                let obj_entity = commands
-                    .spawn(SpriteSheetBundle {
+                let mut obj_entity_commands =
+                    commands.spawn(SpriteSheetBundle {
                         transform: Transform::from_xyz(mapped_x, mapped_y, 1.),
                         sprite: TextureAtlasSprite {
                             index: tile.id() as usize,
@@ -423,11 +429,18 @@ fn spawn_layer(
                         },
                         texture_atlas,
                         ..default()
-                    })
-                    .id();
+                    });
+
+                let obj_entity = obj_entity_commands.id();
 
                 if let Some(tile) = obj.get_tile() {
                     if let Some(ref tile) = tile.get_tile() {
+                        // Handle custom components
+                        spawn_tiled_components(
+                            &tile,
+                            tiled_components,
+                            &mut obj_entity_commands,
+                        );
                         // Handle animation
                         add_animation_if_needed(
                             tile,
@@ -437,104 +450,9 @@ fn spawn_layer(
                             obj_entity,
                         );
                         // Handle collision
-                        if let Some(ref obj_layer_data) = tile.collision {
-                            for data in obj_layer_data.object_data() {
-                                use tiled::ObjectShape;
-                                match &data.shape {
-                                    ObjectShape::Rect { width, height } => {
-                                        commands
-                                            .entity(obj_entity)
-                                            .insert(RigidBody::Fixed)
-                                            .with_children(|parent| {
-                                                let mapped_x_zero =
-                                                    obj_width / 2. - width / 2.;
-                                                let x_tiled_to_bevy =
-                                                    (mapped_x_zero - data.x)
-                                                        * -1.;
-                                                let mapped_y_zero = obj_height
-                                                    / 2.
-                                                    - height / 2.;
-                                                let y_tiled_to_bevy =
-                                                    mapped_y_zero - data.y;
-                                                parent.spawn((
-                                                    Collider::cuboid(
-                                                        *width * 0.5,
-                                                        *height * 0.5,
-                                                    ),
-                                                    Transform::from_xyz(
-                                                        x_tiled_to_bevy,
-                                                        y_tiled_to_bevy,
-                                                        0.,
-                                                    ),
-                                                ));
-                                            });
-                                    }
-                                    ObjectShape::Ellipse { width, height } => {
-                                        if width != height {
-                                            error!(
-                                                "Only ball colliders supported! Spawning ball instead of ellipse."
-                                            );
-                                        }
-                                        commands
-                                            .entity(obj_entity)
-                                            .insert(RigidBody::Fixed)
-                                            .with_children(|parent| {
-                                                let mapped_x_zero =
-                                                    obj_width / 2. - width / 2.;
-                                                let x_tiled_to_bevy =
-                                                    (mapped_x_zero - data.x)
-                                                        * -1.;
-                                                let mapped_y_zero = obj_height
-                                                    / 2.
-                                                    - height / 2.;
-                                                let y_tiled_to_bevy =
-                                                    mapped_y_zero - data.y;
-                                                parent.spawn((
-                                                    Collider::ball(
-                                                        *width * 0.5,
-                                                    ),
-                                                    Transform::from_xyz(
-                                                        x_tiled_to_bevy,
-                                                        y_tiled_to_bevy,
-                                                        0.,
-                                                    ),
-                                                ));
-                                            });
-                                    }
-                                    ObjectShape::Polygon { points } => {
-                                        let points = points
-                                            .iter()
-                                            .map(|(x, y)| {
-                                                Vec2::new(*x, *y * -1.)
-                                            })
-                                            .collect::<Vec<Vec2>>();
-                                        let collider =
-                                            Collider::convex_hull(&points)
-                                                .unwrap();
-                                        let mapped_x_zero = obj_width / 2.;
-                                        let x_tiled_to_bevy =
-                                            (mapped_x_zero - data.x) * -1.;
-                                        let mapped_y_zero = obj_height / 2.;
-                                        let y_tiled_to_bevy =
-                                            mapped_y_zero - data.y;
-                                        commands
-                                            .entity(obj_entity)
-                                            .insert(RigidBody::Fixed)
-                                            .with_children(|parent| {
-                                                parent.spawn((
-                                                    collider,
-                                                    Transform::from_xyz(
-                                                        x_tiled_to_bevy,
-                                                        y_tiled_to_bevy,
-                                                        0.,
-                                                    ),
-                                                ));
-                                            });
-                                    }
-                                    _ => unreachable!(),
-                                }
-                            }
-                        }
+                        add_rigidbodies_if_needed(
+                            tile, commands, obj_entity, obj_width, obj_height,
+                        );
                     }
                 };
 
@@ -551,6 +469,121 @@ fn spawn_layer(
         }
     };
     layer_entity
+}
+
+fn spawn_tiled_components(
+    tile: &tiled::Tile,
+    tiled_components: &mut Res<TiledComponentResource>,
+    tile_entity_commands: &mut bevy::ecs::system::EntityCommands,
+) {
+    let properties: HashMap<String, tiled::PropertyValue> = tile
+        .properties
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+
+    for comp in &tiled_components.vec {
+        if let Some(ref class) = tile.user_type {
+            if comp.get_class_name() == class {
+                comp.insert_self_to_entity(
+                    tile_entity_commands,
+                    properties.clone(),
+                );
+            }
+        }
+    }
+}
+
+fn add_rigidbodies_if_needed(
+    tile: &tiled::Tile,
+    commands: &mut Commands,
+    entity: Entity,
+    container_width: f32,
+    container_height: f32,
+) {
+    if let Some(ref obj_layer_data) = tile.collision {
+        for data in obj_layer_data.object_data() {
+            use tiled::ObjectShape;
+            match &data.shape {
+                ObjectShape::Rect { width, height } => {
+                    commands
+                        .entity(entity)
+                        .insert(RigidBody::Fixed)
+                        .with_children(|parent| {
+                            let mapped_x_zero =
+                                container_width / 2. - width / 2.;
+                            let x_tiled_to_bevy =
+                                (mapped_x_zero - data.x) * -1.;
+                            let mapped_y_zero =
+                                container_height / 2. - height / 2.;
+                            let y_tiled_to_bevy = mapped_y_zero - data.y;
+                            parent.spawn((
+                                Collider::cuboid(*width * 0.5, *height * 0.5),
+                                Transform::from_xyz(
+                                    x_tiled_to_bevy,
+                                    y_tiled_to_bevy,
+                                    0.,
+                                ),
+                            ));
+                        });
+                }
+                ObjectShape::Ellipse { width, height } => {
+                    if width != height {
+                        error!(
+                            "Only ball colliders supported! Spawning ball instead of ellipse."
+                        );
+                    }
+                    commands
+                        .entity(entity)
+                        .insert(RigidBody::Fixed)
+                        .with_children(|parent| {
+                            let mapped_x_zero =
+                                container_width / 2. - width / 2.;
+                            let x_tiled_to_bevy =
+                                (mapped_x_zero - data.x) * -1.;
+                            let mapped_y_zero =
+                                container_height / 2. - height / 2.;
+                            let y_tiled_to_bevy = mapped_y_zero - data.y;
+                            parent.spawn((
+                                Collider::ball(*width * 0.5),
+                                Transform::from_xyz(
+                                    x_tiled_to_bevy,
+                                    y_tiled_to_bevy,
+                                    0.,
+                                ),
+                            ));
+                        });
+                }
+                ObjectShape::Polygon { points } => {
+                    let points = points
+                        .iter()
+                        .map(|(x, y)| Vec2::new(*x, *y * -1.))
+                        .collect::<Vec<Vec2>>();
+                    let collider = Collider::convex_hull(&points).unwrap();
+                    let mapped_x_zero = container_width / 2.;
+                    let x_tiled_to_bevy = (mapped_x_zero - data.x) * -1.;
+                    let mapped_y_zero = container_height / 2.;
+                    let y_tiled_to_bevy = mapped_y_zero - data.y;
+                    commands
+                        .entity(entity)
+                        .insert(RigidBody::Fixed)
+                        .with_children(|parent| {
+                            parent.spawn((
+                                collider,
+                                Transform::from_xyz(
+                                    x_tiled_to_bevy,
+                                    y_tiled_to_bevy,
+                                    0.,
+                                ),
+                            ));
+                        });
+                }
+                _ => {
+                    panic!("Not implemented");
+                }
+            }
+        }
+    }
 }
 
 fn add_animation_if_needed(
