@@ -451,11 +451,9 @@ fn spawn_layer(
                                                 let x_tiled_to_bevy =
                                                     (mapped_x_zero - data.x)
                                                         * -1.;
-
                                                 let mapped_y_zero = obj_height
                                                     / 2.
                                                     - height / 2.;
-
                                                 let y_tiled_to_bevy =
                                                     mapped_y_zero - data.y;
                                                 parent.spawn((
@@ -472,7 +470,66 @@ fn spawn_layer(
                                             });
                                     }
                                     ObjectShape::Ellipse { width, height } => {
-                                        todo!()
+                                        if width != height {
+                                            error!(
+                                                "Only ball colliders supported! Spawning ball instead of ellipse."
+                                            );
+                                        }
+                                        commands
+                                            .entity(obj_entity)
+                                            .insert(RigidBody::Fixed)
+                                            .with_children(|parent| {
+                                                let mapped_x_zero =
+                                                    obj_width / 2. - width / 2.;
+                                                let x_tiled_to_bevy =
+                                                    (mapped_x_zero - data.x)
+                                                        * -1.;
+                                                let mapped_y_zero = obj_height
+                                                    / 2.
+                                                    - height / 2.;
+                                                let y_tiled_to_bevy =
+                                                    mapped_y_zero - data.y;
+                                                parent.spawn((
+                                                    Collider::ball(
+                                                        *width * 0.5,
+                                                    ),
+                                                    Transform::from_xyz(
+                                                        x_tiled_to_bevy,
+                                                        y_tiled_to_bevy,
+                                                        0.,
+                                                    ),
+                                                ));
+                                            });
+                                    }
+                                    ObjectShape::Polygon { points } => {
+                                        let points = points
+                                            .iter()
+                                            .map(|(x, y)| {
+                                                Vec2::new(*x, *y * -1.)
+                                            })
+                                            .collect::<Vec<Vec2>>();
+                                        let collider =
+                                            Collider::convex_hull(&points)
+                                                .unwrap();
+                                        let mapped_x_zero = obj_width / 2.;
+                                        let x_tiled_to_bevy =
+                                            (mapped_x_zero - data.x) * -1.;
+                                        let mapped_y_zero = obj_height / 2.;
+                                        let y_tiled_to_bevy =
+                                            mapped_y_zero - data.y;
+                                        commands
+                                            .entity(obj_entity)
+                                            .insert(RigidBody::Fixed)
+                                            .with_children(|parent| {
+                                                parent.spawn((
+                                                    collider,
+                                                    Transform::from_xyz(
+                                                        x_tiled_to_bevy,
+                                                        y_tiled_to_bevy,
+                                                        0.,
+                                                    ),
+                                                ));
+                                            });
                                     }
                                     _ => unreachable!(),
                                 }
@@ -526,183 +583,6 @@ fn add_animation_if_needed(
         }
     }
 }
-
-// fn handle_grid_stucture(
-//     commands: &mut Commands,
-//     layer_data: tiled::FiniteTileLayer,
-//     tiled_map: &TileMapAsset,
-//     tileset: &std::sync::Arc<tiled::Tileset>,
-//     tileset_idx: usize,
-//     tile_spacing: TilemapSpacing,
-//     tilemap_texture: &TilemapTexture,
-//     object_storage: &mut ObjectsStorage,
-//     assets_atlases: &mut ResMut<Assets<TextureAtlas>>,
-// ) {
-//     let tile_width = tiled_map.map.tile_width as f32;
-//     let tile_height = tiled_map.map.tile_height as f32;
-//     let map_width = tiled_map.map.width;
-//     let map_height = tiled_map.map.height;
-
-//     for x in 0..map_width {
-//         for y in 0..map_height {
-//             let mapped_y = tiled_map.map.height - 1 - y;
-//             let mapped_y = mapped_y as i32;
-//             let mapped_x = x as i32;
-
-//             let offset_x = map_width as f32 * tile_width / 2.;
-//             let offset_y = map_height as f32 * tile_height / 2.;
-
-//             let layer_tile = match layer_data.get_tile(mapped_x, mapped_y) {
-//                 Some(t) => t,
-//                 None => {
-//                     continue;
-//                 }
-//             };
-
-//             if tileset_idx != layer_tile.tileset_index() {
-//                 continue;
-//             }
-
-//             let layer_tile_data =
-//                 match layer_data.get_tile_data(mapped_x, mapped_y) {
-//                     Some(d) => d,
-//                     None => {
-//                         continue;
-//                     }
-//                 };
-
-//             let _a = match tilemap_texture {
-//                 // Case where object's sprite present in spritesheet image
-//                 TilemapTexture::Single(img) => {
-//                     let tile_data = if let Some(data) = layer_tile.get_tile() {
-//                         data
-//                     } else {
-//                         log::error!("GridStructure tile x:{mapped_x}, y: {mapped_y} has not tile_data (name, collision etc)");
-//                         continue;
-//                     };
-
-//                     let name = match tile_data.properties.get("Name") {
-//                         Some(tiled::PropertyValue::StringValue(name)) => {
-//                             Name::from(name.as_str())
-//                         }
-//                         Some(_) => {
-//                             log::error!(
-//                                 "Property `Name` should have `String` type!"
-//                             );
-//                             Name::new(format!(
-//                                 "Tile x: {}, y: {}",
-//                                 mapped_x, mapped_y
-//                             ))
-//                         }
-//                         None => {
-//                             log::error!("GridStructure tile x: {mapped_x}, y: {mapped_y} has not name property!");
-//                             Name::new(format!(
-//                                 "Tile x: {}, y: {}",
-//                                 mapped_x, mapped_y
-//                             ))
-//                         }
-//                     };
-
-//                     let collider = if let Some(ref data) = tile_data.collision {
-//                         if data.object_data().len() != 1 {
-//                             log::error!("Only ONE collider shape per tile supported for now, there are {}", data.object_data().len());
-//                             continue;
-//                         }
-//                         if let Some(object_data) = data.object_data().first() {
-//                             let collider = match &object_data.shape {
-//                                 tiled::ObjectShape::Rect { width, height } => {
-//                                     Collider::cuboid(width / 2., height / 2.)
-//                                 }
-//                                 tiled::ObjectShape::Ellipse {
-//                                     width,
-//                                     height,
-//                                 } => {
-//                                     if width != height {
-//                                         log::error!("Only ball ellipse colliders supported for now!")
-//                                     }
-//                                     Collider::ball(10.)
-//                                 }
-//                                 tiled::ObjectShape::Polyline { points } => {
-//                                     // TODO: need to test how points behaves here
-//                                     println!(
-//                                         "Debug collider-Polyline: {points:?}"
-//                                     );
-//                                     Collider::ball(10.)
-//                                 }
-//                                 tiled::ObjectShape::Polygon { points } => {
-//                                     // TODO: need to test how points behaves here
-//                                     println!(
-//                                         "Debug collider-Polygon: {points:?}"
-//                                     );
-//                                     Collider::ball(10.)
-//                                 }
-//                                 _ => {
-//                                     log::error!("Unsupported collision type!");
-//                                     continue;
-//                                 }
-//                             };
-//                             collider
-//                         } else {
-//                             log::error!("Strange error tiled/mod.rs");
-//                             continue;
-//                         }
-//                     } else {
-//                         log::error!("There are no collider for {name} tile");
-//                         continue;
-//                     };
-
-//                     let texture_idx = layer_tile.id();
-//                     let margin = tileset.margin as f32;
-//                     let handle = object_storage
-//                         .atlases
-//                         .entry(img.id())
-//                         .or_insert_with(|| {
-//                             let atlas = TextureAtlas::from_grid(
-//                                 img.clone(),
-//                                 Vec2::new(tile_width, tile_height),
-//                                 tiled_map.map.height as usize,
-//                                 tiled_map.map.width as usize,
-//                                 Some(Vec2::new(tile_spacing.x, tile_spacing.y)),
-//                                 Some(Vec2::splat(margin)),
-//                             );
-//                             // TODO: Inspect this for efficiency
-//                             assets_atlases.add(atlas)
-//                         });
-//                     let structure_entity = commands
-//                         .spawn((
-//                             SpriteSheetBundle {
-//                                 transform: Transform::from_xyz(
-//                                     x as f32 * tile_width - offset_x,
-//                                     y as f32 * tile_height - offset_y,
-//                                     Y_SORTED_Z_INDEX,
-//                                 ),
-//                                 texture_atlas: handle.clone(),
-//                                 sprite: TextureAtlasSprite {
-//                                     index: texture_idx as usize,
-//                                     flip_x: layer_tile_data.flip_h,
-//                                     flip_y: layer_tile_data.flip_v,
-//                                     ..default()
-//                                 },
-//                                 ..default()
-//                             },
-//                             name.clone(),
-//                             collider,
-//                         ))
-//                         .id();
-//                     object_storage.objects.push((name, structure_entity))
-//                 }
-//                 // Case where object's sprite present in individual image
-//                 // TilemapTexture::Vector(vec) => *tiled_map
-//                 //     .tile_image_offsets
-//                 //     .get(&(tileset_idx, layer_tile.id()))
-//                 //     .expect("The offset to image vector should have been
-//                 //             saved during the initial load."
-//                 //     ),
-//                 _ => unreachable!(),
-//             };
-//         }
-//     }
-// }
 
 fn animate_entities(
     mut query: Query<(&mut Animation, &mut TextureAtlasSprite)>,
@@ -776,4 +656,29 @@ fn inc_frame(cur: u32, max: u32) -> u32 {
     } else {
         cur + 1
     }
+}
+
+#[allow(dead_code)]
+fn get_rect_from_convex(vec: &[Vec2]) -> (f32, f32) {
+    let mut x_min = vec[0].x;
+    let mut y_min = vec[0].y;
+    let mut x_max = vec[0].x;
+    let mut y_max = vec[0].y;
+
+    for point in vec {
+        if point.x < x_min {
+            x_min = point.x
+        }
+        if point.y < y_min {
+            y_min = point.y
+        }
+        if point.x > x_max {
+            x_max = point.x
+        }
+        if point.y > y_max {
+            y_max = point.y
+        }
+    }
+
+    (x_max - x_min, y_max - y_min)
 }
