@@ -5,6 +5,9 @@ use bevy::log;
 use bevy::prelude::*;
 use bevy::utils::HashMap;
 
+#[cfg(feature = "rapier2d")]
+use bevy_rapier2d::prelude::*;
+
 // ───── Current Crate Imports ────────────────────────────────────────────── //
 
 use crate::asset_loader::TiledLoader;
@@ -238,6 +241,7 @@ fn spawn_layer(
             Name::from(layer.name.clone()),
         ))
         .id();
+    let layer_opacity = layer.opacity;
     match layer.layer_type() {
         tiled::LayerType::Tiles(layer) => {
             match layer {
@@ -288,12 +292,15 @@ fn spawn_layer(
                                             continue;
                                         }
                                     };
+
                                     // Spawn tile
                                     let tile_entity = commands
                                         .spawn(SpriteSheetBundle {
                                             transform: Transform::from_xyz(
-                                                (mapped_x * tile_width) as f32,
-                                                (mapped_y * tile_height) as f32,
+                                                (mapped_x * tile_width) as f32
+                                                    + tile_width as f32 * 0.5,
+                                                (mapped_y * tile_height) as f32
+                                                    + tile_height as f32 * 0.5,
                                                 1.,
                                             ),
                                             sprite: TextureAtlasSprite {
@@ -301,6 +308,8 @@ fn spawn_layer(
                                                     as usize,
                                                 flip_x: layer_tile_data.flip_h,
                                                 flip_y: layer_tile_data.flip_v,
+                                                color: Color::WHITE
+                                                    .with_a(layer_opacity),
                                                 ..default()
                                             },
                                             texture_atlas,
@@ -322,7 +331,7 @@ fn spawn_layer(
                                     }).collect();
 
                                     add_animation_if_needed(
-                                        tile,
+                                        &tile,
                                         tilemap_asset,
                                         &tls_idx,
                                         commands,
@@ -374,19 +383,42 @@ fn spawn_layer(
                     }
                 };
 
-                let mapped_y = (tilemap_asset.map.height
+                let obj_width = if let Some(tile) = tile.get_tile() {
+                    if let Some(ref image) = tile.image {
+                        image.width as f32
+                    } else {
+                        tile.tileset().tile_width as f32
+                    }
+                } else {
+                    tile.get_tileset().tile_width as f32
+                };
+
+                let obj_height = if let Some(tile) = tile.get_tile() {
+                    if let Some(ref image) = tile.image {
+                        image.height as f32
+                    } else {
+                        tile.tileset().tile_height as f32
+                    }
+                } else {
+                    tile.get_tileset().tile_height as f32
+                };
+
+                let map_height = (tilemap_asset.map.height
                     * tilemap_asset.map.tile_height)
-                    as f32
-                    - obj.y;
+                    as f32;
+
+                let mapped_x = obj.x + obj_width * 0.5;
+                let mapped_y = map_height - obj.y + obj_height * 0.5;
 
                 // Spawn object
                 let obj_entity = commands
                     .spawn(SpriteSheetBundle {
-                        transform: Transform::from_xyz(obj.x, mapped_y, 1.),
+                        transform: Transform::from_xyz(mapped_x, mapped_y, 1.),
                         sprite: TextureAtlasSprite {
                             index: tile.id() as usize,
                             flip_x: tile.flip_h,
                             flip_y: tile.flip_v,
+                            color: Color::WHITE.with_a(layer_opacity),
                             ..default()
                         },
                         texture_atlas,
@@ -395,7 +427,8 @@ fn spawn_layer(
                     .id();
 
                 if let Some(tile) = obj.get_tile() {
-                    if let Some(tile) = tile.get_tile() {
+                    if let Some(ref tile) = tile.get_tile() {
+                        // Handle animation
                         add_animation_if_needed(
                             tile,
                             tilemap_asset,
@@ -403,6 +436,48 @@ fn spawn_layer(
                             commands,
                             obj_entity,
                         );
+                        // Handle collision
+                        if let Some(ref obj_layer_data) = tile.collision {
+                            for data in obj_layer_data.object_data() {
+                                use tiled::ObjectShape;
+                                match &data.shape {
+                                    ObjectShape::Rect { width, height } => {
+                                        commands
+                                            .entity(obj_entity)
+                                            .insert(RigidBody::Fixed)
+                                            .with_children(|parent| {
+                                                let mapped_x_zero =
+                                                    obj_width / 2. - width / 2.;
+                                                let x_tiled_to_bevy =
+                                                    (mapped_x_zero - data.x)
+                                                        * -1.;
+
+                                                let mapped_y_zero = obj_height
+                                                    / 2.
+                                                    - height / 2.;
+
+                                                let y_tiled_to_bevy =
+                                                    mapped_y_zero - data.y;
+                                                parent.spawn((
+                                                    Collider::cuboid(
+                                                        *width * 0.5,
+                                                        *height * 0.5,
+                                                    ),
+                                                    Transform::from_xyz(
+                                                        x_tiled_to_bevy,
+                                                        y_tiled_to_bevy,
+                                                        0.,
+                                                    ),
+                                                ));
+                                            });
+                                    }
+                                    ObjectShape::Ellipse { width, height } => {
+                                        todo!()
+                                    }
+                                    _ => unreachable!(),
+                                }
+                            }
+                        }
                     }
                 };
 
@@ -422,7 +497,7 @@ fn spawn_layer(
 }
 
 fn add_animation_if_needed(
-    tile: tiled::Tile,
+    tile: &tiled::Tile,
     tilemap_asset: &TilemapAsset,
     tls_idx: &usize,
     commands: &mut Commands,

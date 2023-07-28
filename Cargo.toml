@@ -16,6 +16,7 @@ default = [
     "bevy/bevy_asset",
     "bevy/png",
     "bevy/bevy_sprite",
+    "rapier2d"
 ]
 rapier2d = [
     "bevy_rapier2d/simd-stable",
