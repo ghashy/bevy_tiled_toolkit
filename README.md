@@ -16,6 +16,9 @@ This crate is for loading maps from Tiled into Bevy game engine.
 
 ## What is not supported temporarily:
 * Layer offsets
+* Layer parallax factors
+* Image layers
+* Group layers
 
 ## What is not supported, because I don't know how to implement it for now:
 * Object scaling
