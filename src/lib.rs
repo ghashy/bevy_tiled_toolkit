@@ -12,9 +12,10 @@
     // missing_docs
 )]
 
-// ───── Submodules ───────────────────────────────────────────────────────── //
-
+use bevy::prelude::*;
 use bevy::{ecs::system::EntityCommands, utils::HashMap};
+
+// ───── Submodules ───────────────────────────────────────────────────────── //
 
 // Top-level modules
 mod app_extension;
@@ -83,13 +84,16 @@ pub mod prelude {
 /// }
 /// ```
 pub trait TiledComponent {
-    /// This function called when we are spawning tile with same `Class` name
-    /// as your component type, and it gives `HashMap` with properties from
-    /// Tiled.
+    /// This method called when we are spawning tile with same `Class` name
+    /// as your component's type, and it provides `HashMap` with properties
+    /// from Tiled. We need `&self` here because we do not know a particular
+    /// type for which we will call the method, so we can't call it as a static
+    /// method.
     fn insert_self_to_entity(
         &self,
         commands: &mut EntityCommands,
         values: HashMap<String, tiled::PropertyValue>,
+        asset_server: &Res<AssetServer>,
     );
     /// This function required for getting name of your type and compare it
     /// with `Class` name from Tiled.

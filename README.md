@@ -8,6 +8,7 @@ This crate is for loading maps from Tiled into Bevy game engine.
 - [x] Object layers
 - [x] Tiled animation is played in bevy
 - [x] Spritesheet-based tilesets and individual-image-based tilesets
+- [x] Spawning custom components with particular tiles entities with `TiledComponent` trait
 
 ## What supported with `rapier2d` feature enabled:
 - [x] Spawning RigidBody::Fixed with rectangle collision shape

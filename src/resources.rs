@@ -16,12 +16,6 @@ impl TiledComponentResource {
     pub(crate) fn new() -> Self {
         TiledComponentResource { vec: vec![] }
     }
-    pub(crate) fn insert(
-        &mut self,
-        component: Box<dyn TiledComponent + Send + Sync>,
-    ) {
-        self.vec.push(component);
-    }
 }
 
 #[derive(Default, Debug, Clone)]

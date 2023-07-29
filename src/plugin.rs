@@ -324,6 +324,7 @@ fn spawn_layer(
                                         &tile,
                                         tiled_components,
                                         &mut tile_entity_commands,
+                                        asset_server,
                                     );
 
                                     let tile_entity = tile_entity_commands.id();
@@ -440,6 +441,7 @@ fn spawn_layer(
                             &tile,
                             tiled_components,
                             &mut obj_entity_commands,
+                            asset_server,
                         );
                         // Handle animation
                         add_animation_if_needed(
@@ -475,6 +477,7 @@ fn spawn_tiled_components(
     tile: &tiled::Tile,
     tiled_components: &mut Res<TiledComponentResource>,
     tile_entity_commands: &mut bevy::ecs::system::EntityCommands,
+    asset_server: &Res<AssetServer>,
 ) {
     let properties: HashMap<String, tiled::PropertyValue> = tile
         .properties
@@ -488,6 +491,7 @@ fn spawn_tiled_components(
                 comp.insert_self_to_entity(
                     tile_entity_commands,
                     properties.clone(),
+                    asset_server,
                 );
             }
         }
