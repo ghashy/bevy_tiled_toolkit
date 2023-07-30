@@ -16,10 +16,16 @@ use super::tile_pos::TilePos;
 type LayerIdx = usize;
 type TilemapSize = UVec2;
 
+/// Stores all layers entities by name.
 #[derive(Component, Default, Debug)]
 pub struct LayerStorage {
     pub layers: HashMap<Name, Entity>,
-    pub asset_id: Option<HandleId>,
+}
+
+/// Stores all tiles entities of all layers of the map.
+#[derive(Component, Default, Debug)]
+pub struct TileStorage {
+    tiles: HashMap<LayerIdx, (TilemapSize, Vec<Option<Entity>>)>,
 }
 
 /// Errors which can be returned when working with `TileStorage` type.
@@ -33,34 +39,6 @@ pub enum TileStorageError {
     TileCellEmpty,
     /// The tile position lies within the underlying tile layer's extents.
     TileOutOfLayer,
-}
-
-impl Display for TileStorageError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TileStorageError::LayerAlreadyInitialized => {
-                f.write_str("Layer already initialized!")?
-            }
-            TileStorageError::NoLayerWithIndex => {
-                f.write_str("No layer with that index!")?
-            }
-            TileStorageError::TileCellEmpty => {
-                f.write_str("Tile cell is empty!")?
-            }
-            TileStorageError::TileOutOfLayer => {
-                f.write_str("That tile is out of layer bounds!")?
-            }
-        }
-        Ok(())
-    }
-}
-
-impl Error for TileStorageError {}
-
-/// Stores all tiles entities of all layers of the map.
-#[derive(Component, Default, Debug)]
-pub struct TileStorage {
-    tiles: HashMap<LayerIdx, (TilemapSize, Vec<Option<Entity>>)>,
 }
 
 impl TileStorage {
@@ -187,6 +165,30 @@ impl TileStorage {
         self.tiles.clear();
     }
 }
+
+impl Display for TileStorageError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TileStorageError::LayerAlreadyInitialized => {
+                f.write_str("Layer already initialized!")?
+            }
+            TileStorageError::NoLayerWithIndex => {
+                f.write_str("No layer with that index!")?
+            }
+            TileStorageError::TileCellEmpty => {
+                f.write_str("Tile cell is empty!")?
+            }
+            TileStorageError::TileOutOfLayer => {
+                f.write_str("That tile is out of layer bounds!")?
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Error for TileStorageError {}
+
+// ───── Unit tests ───────────────────────────────────────────────────────── //
 
 mod tests {
     use super::*;

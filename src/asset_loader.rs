@@ -24,6 +24,13 @@ pub struct TiledMapAsset {
     /// Stores pairs of tileset_index and actual `TilesetTexture` container,
     /// loaded from disk.
     pub tilemap_textures: HashMap<TilesetIdx, TilesetTexture>,
+    /// Needs for linking every loaded individual tile-id to it's image.
+    /// Contains (tileset_index, tile_id) pairs as `key` and image offset in
+    /// `TilesetTexture::Vector(tile_images)` container as `value`.
+    pub tile_image_offsets: HashMap<(TilesetIdx, tiled::TileId), u32>,
+    //
+    // These are initially empty
+    //
     /// When we loaded all individual tile images, we need to pack them all
     /// into single atlases. This field stores correlation between
     /// `tileset_index` and actual `Handle<TextureAtlas>`.
@@ -31,10 +38,6 @@ pub struct TiledMapAsset {
     /// We have to know where every single tile-id placed in it's tileset
     /// atlas for playing animation purposes.
     pub atlases_offsets: HashMap<TilesetIdx, HashMap<tiled::TileId, usize>>,
-    /// Needs for linking every loaded individual tile-id to it's image.
-    /// Contains (tileset_index, tile_id) pairs as `key` and image offset in
-    /// `TilesetTexture::Vector(tile_images)` container as `value`.
-    pub tile_image_offsets: HashMap<(TilesetIdx, tiled::TileId), u32>,
 }
 
 /// Mock type for piping bytes from `AssetLoader`'s context to

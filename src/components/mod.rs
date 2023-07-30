@@ -29,10 +29,11 @@ mod tile_pos;
 ///     }
 /// }
 /// ```
-
 #[derive(Component)]
 pub struct DespawnTiledMap;
 
+/// Represents unified container for tilesets from single spritesheets and
+/// inidividual images.
 #[derive(Component, Reflect, Clone, Debug, Hash, PartialEq, Eq)]
 #[reflect(Component)]
 pub enum TilesetTexture {
@@ -48,11 +49,15 @@ impl Default for TilesetTexture {
     }
 }
 
+/// Missing documentation
 #[derive(Component)]
 pub struct Animation {
+    /// Missing documentation
     pub frames: Vec<tiled::Frame>,
+    /// Missing documentation
     pub current_frame: tiled::TileId,
-    // TODO: doc this
+    /// Missing documentation
     pub offsets: HashMap<tiled::TileId, usize>,
+    /// Missing documentation
     pub timer: Timer,
 }
