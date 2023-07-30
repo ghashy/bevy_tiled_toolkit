@@ -73,7 +73,7 @@ that `get_class_name` function returns.
 `insert_self_to_entity` function, where you can use them to initialize your
 component.
 
-### Rendering with bevy_ecs_tilemap
+## Rendering with bevy_ecs_tilemap
 
 This crate supports rendering layers with [bevy_ecs_tilemap](https://github.com/StarArawn/bevy_ecs_tilemap),
 but there are some limitations:
