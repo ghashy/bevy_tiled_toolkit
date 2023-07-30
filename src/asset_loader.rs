@@ -1,3 +1,5 @@
+//! Types for loading .tmx files as assets to Bevy.
+
 use bevy::asset::{AssetLoader, AssetPath, LoadedAsset};
 use bevy::prelude::*;
 use bevy::reflect::{TypePath, TypeUuid};
@@ -16,7 +18,7 @@ type TilesetIdx = usize;
 /// Asset, `Handle<TileMap>` we will load from asset_server
 #[derive(TypeUuid, TypePath)]
 #[uuid = "e51081d0-6168-4881-a1c6-4249b2000d7f"]
-pub struct TilemapAsset {
+pub struct TiledMapAsset {
     /// Parsed `.tmx` file from Tiled.
     pub map: tiled::Map,
     /// Stores pairs of tileset_index and actual `TilesetTexture` container,
@@ -89,7 +91,7 @@ impl AssetLoader for TiledLoader {
             let (dependencies, tilemap_textures, tile_image_offsets) =
                 get_tilemaps_with_deps(&map, load_context);
 
-            let asset_map = TilemapAsset {
+            let asset_map = TiledMapAsset {
                 map: map.clone(),
                 tilemap_textures,
                 atlases: HashMap::new(),

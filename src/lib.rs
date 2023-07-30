@@ -1,4 +1,42 @@
 //! This is a tiled integration plugin for Bevy game engine.
+//! ### Spawning tilemap
+//! To spawn tilemap just spawn a [TiledMapBundle](self::plugin::TiledMapBundle)
+//! :
+//! ```
+//! fn system_spawn_map(
+//!     mut commands: Commands,
+//!     asset_server: Res<AssetServer>,
+//!     input: Res<Input<KeyCode>>,
+//! ) {
+//!     if input.just_pressed(KeyCode::Space) {
+//!         let tiled_map: Handle<TiledMapAsset> =
+//!             asset_server.load("tiled/tilemaps/Map.tmx");
+//!
+//!         commands.spawn(TiledMapBundle {
+//!             tiled_map,
+//!             name: Name::from("TiledMap"),
+//!             ..default()
+//!         });
+//!     }
+//! }
+//! ```
+//!
+//! ### Despawning tilemap
+//! Spawn a [DespawnTilemap](self::components::DespawnTiledMap) component to an
+//! entity with `Handle<TiledMapAsset>`to despawn the tilemap:
+//! ```
+//! fn system_despawn_map(
+//!     mut commands: Commands,
+//!     input: Res<Input<KeyCode>>,
+//!     tiled_map_query: Query<Entity, With<Handle<TiledMapAsset>>>,
+//! ) {
+//!     if input.just_pressed(KeyCode::P) {
+//!         for entity in tiled_map_query.iter() {
+//!             commands.entity(entity).insert(DespawnTiledMap);
+//!         }
+//!     }
+//! }
+//! ```
 
 #![deny(
     // warnings,
@@ -19,27 +57,27 @@ use bevy::{ecs::system::EntityCommands, utils::HashMap};
 
 // Top-level modules
 mod app_extension;
-mod asset_loader;
-mod components;
+pub mod asset_loader;
+pub mod components;
 mod plugin;
 mod resources;
 
 // ───── Body ─────────────────────────────────────────────────────────────── //
 
-/// Groups all used types.
 pub mod prelude {
-    pub use super::asset_loader::TilemapAsset;
+    //! `use bevy_tiled_toolkit::prelude::*;` to import commonly used items.
+    pub use super::asset_loader::TiledMapAsset;
     pub use super::components::{
         LayerStorage, TilePos, TileStorage, TileStorageError,
     };
     pub use super::resources::{TiledPoint, TiledPoints};
     pub use crate::app_extension::TiledComponentReg;
+    pub use crate::components::DespawnTiledMap;
     pub use crate::plugin::TiledMapBundle;
     pub use crate::plugin::TiledToolkitPlugin;
 }
 
-/// Spawn your components with specific tiles or objects from Tiled for fast
-/// querying!
+/// Spawn your components with specific tiles or objects from Tiled.
 ///
 /// Implement this trait for your component type and add your component's name
 /// to `Class` field in tile's properties in Tiled.

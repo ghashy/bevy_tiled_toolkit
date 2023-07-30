@@ -9,6 +9,7 @@ This crate is for loading maps from Tiled into Bevy game engine.
 - [x] Tiled animation is played in bevy
 - [x] Spritesheet-based tilesets and individual-image-based tilesets
 - [x] Spawning custom components with particular tiles entities with `TiledComponent` trait
+- [x] Maps with orthogonal orientation
 
 ## What supported with `rapier2d` feature enabled:
 - [x] Spawning RigidBody::Fixed with rectangle collision shape
@@ -16,10 +17,13 @@ This crate is for loading maps from Tiled into Bevy game engine.
 - [x] Spawning RigidBody::Fixed with convex polygon collision shape
 
 ## What is not supported temporarily:
+* Isometric, Staggered and Hexagonal maps
 * Layer offsets
 * Layer parallax factors
 * Image layers
 * Group layers
 
 ## What is not supported, because I don't know how to implement it for now:
+* Filesystem watcher feature does not work properly with this plugin
 * Object scaling
+* Infinite tile layers

@@ -1,10 +1,4 @@
-//! Components in this module:
-//! `LayerStorage` - stores all layers of the map.
-//! `TileStorage` - stores all tiles of the map.
-//! `TilePos` - represents integer tile position in the tilemap.
-//! `TilesetTexture` - stores image handles for the tilesets.
-//! `Tile` - marker component.
-//! `Object` - marker component
+//! [Component]'s to spawning with tiles or tilemap.
 
 use bevy::prelude::*;
 use bevy::utils::HashMap;
@@ -21,6 +15,24 @@ mod tile_pos;
 
 // ───── Body ─────────────────────────────────────────────────────────────── //
 
+/// Insert this component to `Handle<TiledMapAsset>` entity to despawn tilemap.
+/// ```
+/// fn system_despawn_map(
+///     mut commands: Commands,
+///     input: Res<Input<KeyCode>>,
+///     tilemap_query: Query<Entity, With<Handle<TiledMapAsset>>>,
+/// ) {
+///     if input.just_pressed(KeyCode::Space) {
+///         for entity in tilemap_query.iter() {
+///             commands.entity(entity).insert(DespawnTiledMap);
+///         }
+///     }
+/// }
+/// ```
+
+#[derive(Component)]
+pub struct DespawnTiledMap;
+
 #[derive(Component, Reflect, Clone, Debug, Hash, PartialEq, Eq)]
 #[reflect(Component)]
 pub enum TilesetTexture {
@@ -36,8 +48,6 @@ impl Default for TilesetTexture {
     }
 }
 
-pub type Duration = u32;
-
 #[derive(Component)]
 pub struct Animation {
     pub frames: Vec<tiled::Frame>,
@@ -45,11 +55,4 @@ pub struct Animation {
     // TODO: doc this
     pub offsets: HashMap<tiled::TileId, usize>,
     pub timer: Timer,
-}
-
-/// Component for marking objects loaded from tiled.
-#[derive(Component)]
-pub struct Object {
-    name: Option<Name>,
-    // properties: HashMap<String, String>,
 }
