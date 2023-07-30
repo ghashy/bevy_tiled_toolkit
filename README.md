@@ -1,5 +1,6 @@
 This is a [Tiled](https://www.mapeditor.org) integration plugin for
 [Bevy](https://bevyengine.org) game engine.
+Bevy version: "0.11.0".
 
 > 🚧 This project is under development, and is currently lacking some critical features
 
