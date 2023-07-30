@@ -24,7 +24,7 @@ use crate::resources::TiledComponentResource;
 
 // ───── Body ─────────────────────────────────────────────────────────────── //
 
-/// This is a `Bundle` for spawning tiled tilemap.
+/// This is a `Bundle` for spawning Tiled tilemap.
 #[derive(Default, Bundle)]
 pub struct TiledMapBundle {
     pub tiled_map: Handle<TiledMapAsset>,
