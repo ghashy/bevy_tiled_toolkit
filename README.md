@@ -1,6 +1,8 @@
 This is a [Tiled](https://www.mapeditor.org) integration plugin for
 [Bevy](https://bevyengine.org) game engine.
 
+> 🚧 This project is under development, and is currently lacking some critical features
+
 ### Getting starged
 This plugin allows to use almost every features from `Tiled` map editor in
 in your Bevy-game.
