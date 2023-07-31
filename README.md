@@ -121,6 +121,7 @@ fn system_despawn_map(
 - [x] Spritesheet-based tilesets and individual-image-based tilesets
 - [x] Spawning custom components with particular tiles entities with `TiledComponent` trait
 - [x] Maps with orthogonal orientation
+- [x] Map respawning on asset changed event.
 
 ## What supported with `rapier2d` feature enabled:
 - [x] Spawning RigidBody::Fixed with rectangle collision shape
@@ -135,6 +136,5 @@ fn system_despawn_map(
 * Group layers
 
 ## What is not supported, because I don't know how to implement it for now:
-* Filesystem watcher feature does not work properly with this plugin
 * Object scaling
 * Infinite tile layers
