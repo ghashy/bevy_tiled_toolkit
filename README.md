@@ -80,7 +80,7 @@ but there are some limitations:
 * Only tile layers supported.
 * Each tile should have the same size.
 * One layer should use only one tilemap at the same time.
-* You can’t implement YSorting with tiles spawned with [bevy_ecs_tilemap](https://github.com/StarArawn/bevy_ecs_tilemap), because it’s impossible to change transform for each tile independently: bevy_ecs_tilemap glue together all tiles into one big image.
+* You can’t implement YSorting (which is very useful in top-down 2d games) with tiles spawned with [bevy_ecs_tilemap](https://github.com/StarArawn/bevy_ecs_tilemap), because it’s impossible to change transform for each tile independently: bevy_ecs_tilemap glue together all tiles into one big image.
 
 At the same time it is recommended to render at least the base layer with
 [bevy_ecs_tilemap](https://github.com/StarArawn/bevy_ecs_tilemap)
