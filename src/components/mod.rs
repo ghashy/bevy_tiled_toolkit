@@ -17,6 +17,9 @@ mod tile_pos;
 
 /// Insert this component to `Handle<TiledMapAsset>` entity to despawn tilemap.
 /// ```
+/// use bevy::prelude::*;
+/// use bevy_tiled_toolkit::prelude::*;
+///
 /// fn system_despawn_map(
 ///     mut commands: Commands,
 ///     input: Res<Input<KeyCode>>,
@@ -61,3 +64,6 @@ pub struct Animation {
     /// Missing documentation
     pub timer: Timer,
 }
+
+#[derive(Component)]
+pub(crate) struct NeedToSpawn;

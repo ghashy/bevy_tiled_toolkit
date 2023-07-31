@@ -38,6 +38,8 @@ pub struct TiledMapAsset {
     /// We have to know where every single tile-id placed in it's tileset
     /// atlas for playing animation purposes.
     pub atlases_offsets: HashMap<TilesetIdx, HashMap<tiled::TileId, usize>>,
+    /// When all atlases are loaded `atlases_loaded` switches to `true`.
+    pub(crate) atlases_loaded: bool,
 }
 
 /// Mock type for piping bytes from `AssetLoader`'s context to
@@ -100,6 +102,7 @@ impl AssetLoader for TiledLoader {
                 atlases: HashMap::new(),
                 atlases_offsets: HashMap::new(),
                 tile_image_offsets,
+                atlases_loaded: false,
             };
 
             info!("Loaded map: {}", load_context.path().display());

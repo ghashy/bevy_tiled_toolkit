@@ -3,7 +3,6 @@
 use std::error::Error;
 use std::fmt::Display;
 
-use bevy::asset::HandleId;
 use bevy::prelude::*;
 use bevy::utils::HashMap;
 
@@ -22,10 +21,12 @@ pub struct LayerStorage {
     pub layers: HashMap<Name, Entity>,
 }
 
-/// Stores all tiles entities of all layers of the map.
+/// Stores all tiles entities of all layers of the map, (except objects).
 #[derive(Component, Default, Debug)]
 pub struct TileStorage {
     tiles: HashMap<LayerIdx, (TilemapSize, Vec<Option<Entity>>)>,
+    pub(crate) bevy_ecs_tilemap_tile_storages:
+        HashMap<LayerIdx, bevy_ecs_tilemap::prelude::TileStorage>,
 }
 
 /// Errors which can be returned when working with `TileStorage` type.
@@ -46,6 +47,7 @@ impl TileStorage {
     pub fn new() -> Self {
         TileStorage {
             tiles: HashMap::new(),
+            bevy_ecs_tilemap_tile_storages: HashMap::new(),
         }
     }
 
@@ -209,7 +211,10 @@ mod tests {
                 ),
             );
         }
-        TileStorage { tiles }
+        TileStorage {
+            tiles,
+            bevy_ecs_tilemap_tile_storages: HashMap::new(),
+        }
     }
 
     #[test]

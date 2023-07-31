@@ -17,6 +17,7 @@ use crate::asset_loader::TiledLoader;
 use crate::asset_loader::TiledMapAsset;
 use crate::components::Animation;
 use crate::components::LayerStorage;
+use crate::components::NeedToSpawn;
 use crate::components::TileStorage;
 use crate::components::TilesetTexture;
 use crate::prelude::DespawnTiledMap;
@@ -61,17 +62,17 @@ impl Plugin for TiledToolkitPlugin {
             .add_systems(
                 Update,
                 (
-                    listen_for_tilemap_loading
+                    system_despawn_maps
                         .run_if(in_state(TiledMapLoadState::Idle)),
-                    check_tilemap_load_state
-                        .run_if(in_state(TiledMapLoadState::Loading)),
-                    setup_atlases
+                    system_check_asset_state
+                        .run_if(in_state(TiledMapLoadState::Idle)),
+                    system_setup_atlases
                         .run_if(in_state(TiledMapLoadState::SetupAtlases)),
                     system_process_loaded_maps
-                        .run_if(in_state(TiledMapLoadState::Loaded)),
-                    animate_entities
-                        .run_if(in_state(TiledMapLoadState::Loaded)),
-                ),
+                        .run_if(in_state(TiledMapLoadState::Idle)),
+                    system_animate_entities,
+                )
+                    .chain(),
             );
     }
 }
@@ -80,198 +81,252 @@ impl Plugin for TiledToolkitPlugin {
 enum TiledMapLoadState {
     #[default]
     Idle,
-    Loading,
     SetupAtlases,
-    Loaded,
 }
 
-/// When map is not loaded or removed or reloaded we are in
-/// `TiledMapLoadState::Idle` state and listening if any
-/// `Handle<TiledMapAsset>` is loaded.
-fn listen_for_tilemap_loading(
-    mut next_state: ResMut<NextState<TiledMapLoadState>>,
-    tilemap: Query<Added<Handle<TiledMapAsset>>>,
-    despawned: Query<
-        (&LayerStorage, &TileStorage, &Handle<TiledMapAsset>),
-        With<DespawnTiledMap>,
+fn system_check_asset_state(
+    mut commands: Commands,
+    mut tilemap_query: Query<
+        (&Handle<TiledMapAsset>, &mut TileStorage, &LayerStorage),
+        Without<NeedToSpawn>,
     >,
-) {
-    for (layer_storage, tile_storage, tilemap_asset) in despawned.iter() {
-        println!("ALL WERE DESPAWNED");
-    }
-    if let Some(_) = tilemap.iter().next() {
-        next_state.set(TiledMapLoadState::Loading);
-    }
-}
-
-/// If bevy starts loading of the tilemap asset, we need to make sure that all
-/// dependencies were loaded, to start slicing all textures into atlases.
-fn check_tilemap_load_state(
+    mut tilemaps: ResMut<Assets<TiledMapAsset>>,
     mut next_state: ResMut<NextState<TiledMapLoadState>>,
-    tilemap: Query<&Handle<TiledMapAsset>>,
-    asset_server: Res<AssetServer>,
+    maps_events: EventReader<AssetEvent<TiledMapAsset>>,
 ) {
-    if tilemap.iter().count() != 1 {
-        panic!("Expected to have only 1 tilemap loading at once!");
-    }
-    if let LoadState::Loaded =
-        asset_server.get_load_state(tilemap.iter().next().unwrap())
-    {
+    let changed_maps = events_to_vectors(maps_events);
+    let changed_existing = tilemap_query
+        .iter_mut()
+        .filter(|(handle, _, _)| changed_maps.contains(handle));
+
+    for (tilemap_handle, mut tile_storage, layer_storage) in changed_existing {
+        for ecs_storage in tile_storage.bevy_ecs_tilemap_tile_storages.values()
+        {
+            for tile in ecs_storage.iter().flatten() {
+                // In `bevy_ecs_tilamap` there is no point to add childrens to
+                // it, they don't have `transform` component. That's why we
+                // call `despawn()` instead of `despawn_recursive()`.
+                commands.entity(*tile).despawn();
+            }
+        }
+        for tile in tile_storage.iter_all().flatten() {
+            commands.entity(*tile).despawn_recursive();
+        }
+        // Clear storages
+        tile_storage.clear();
+        tile_storage.bevy_ecs_tilemap_tile_storages.clear();
+
+        for layer in layer_storage.layers.values() {
+            // Layer has objects as children, despawn them too.
+            commands.entity(*layer).despawn_recursive();
+        }
+
+        if let Some(tilemap_asset) = tilemaps.get_mut(tilemap_handle) {
+            tilemap_asset.atlases_loaded = false;
+        }
+        println!("Next state stupatlases");
         next_state.set(TiledMapLoadState::SetupAtlases);
     }
 }
 
 /// Slice all textures into atlases
-fn setup_atlases(
-    tilemap_handle: Query<&Handle<TiledMapAsset>>,
+fn system_setup_atlases(
+    mut commands: Commands,
+    tilemap_query: Query<(Entity, &Handle<TiledMapAsset>)>,
     mut tilemaps: ResMut<Assets<TiledMapAsset>>,
     mut textures: ResMut<Assets<Image>>,
     asset_server: Res<AssetServer>,
-    mut next_state: ResMut<NextState<TiledMapLoadState>>,
     mut texture_atlas_assets: ResMut<Assets<TextureAtlas>>,
+    mut next_state: ResMut<NextState<TiledMapLoadState>>,
 ) {
-    let tilemap_asset = tilemaps.get_mut(tilemap_handle.single()).unwrap();
-    for (tls_idx, tls) in tilemap_asset.map.tilesets().iter().enumerate() {
-        // In this case there is expected single spritesheet image
-        if let Some(ref tls_image) = tls.image {
-            let handle = match tilemap_asset.tilemap_textures.get(&tls_idx) {
-                Some(TilesetTexture::Single(handle)) => handle,
-                _ => panic!("Error: tilemap spritesheet was not loaded!"),
-            };
-
-            let tile_size =
-                Vec2::new(tls.tile_width as f32, tls.tile_height as f32);
-            let columns = tls.columns as usize;
-            let padding = Vec2::splat(tls.spacing as f32);
-            let rows = ((tls_image.height - tls.margin as i32 * 2)
-                / (tls.tile_height + tls.spacing) as i32)
-                as usize;
-            let offset = Vec2::new(tls.offset_x as f32, tls.offset_y as f32);
-            let atlas = TextureAtlas::from_grid(
-                handle.clone(),
-                tile_size,
-                columns,
-                rows,
-                Some(padding),
-                Some(offset),
-            );
-            let handle = texture_atlas_assets.add(atlas);
-            tilemap_asset.atlases.insert(tls_idx, handle);
+    println!("setuping atlases");
+    if tilemap_query.iter().all(|(_, tilemap_handle)| {
+        if let Some(tilemap_asset) = tilemaps.get(tilemap_handle) {
+            tilemap_asset.atlases_loaded
         } else {
-            // In this case there is expected vec with individual images
-            let handles = match tilemap_asset.tilemap_textures.get(&tls_idx) {
-                Some(TilesetTexture::Vector(handles)) => handles,
-                _ => panic!("Error: individual images were not loaded!"),
-            };
-            // FIXME: detect required size of atlasbuilder
-            let mut atlas_builder = TextureAtlasBuilder::default()
-                .max_size(Vec2::new(512. * 20., 512.));
-            // Individual image to tile-id offset container
-            let offsets = &tilemap_asset.tile_image_offsets;
+            false
+        }
+    }) {
+        next_state.set(TiledMapLoadState::Idle);
+    }
 
-            // Because of `TextureAtlasBuilder` saves all images in random
-            // order, we need to check and save all image offsets in atlas.
-            let mut atlas_offsets = Vec::new();
-            // Pack images to atlas
-            for (tile_id, _) in tls.tiles() {
-                let offset = offsets.get(&(tls_idx, tile_id)).unwrap();
-                let handle = handles.get(*offset as usize).unwrap();
-                let Some(texture) = textures.get(handle) else {
+    for (entity, tilemap_handle) in tilemap_query.iter() {
+        if !(LoadState::Loaded == asset_server.get_load_state(tilemap_handle)) {
+            warn!("TiledMapAsset were not loaded for now");
+            continue;
+        }
+        let Some(tilemap_asset) = tilemaps.get_mut(tilemap_handle) else {
+            warn!("No TiledMapAsset existing with that handle!");
+            continue;
+        };
+        if tilemap_asset.atlases_loaded {
+            continue;
+        }
+
+        // Clear old values after changing
+        tilemap_asset.atlases.clear();
+        tilemap_asset.atlases_offsets.clear();
+
+        for (tls_idx, tls) in tilemap_asset.map.tilesets().iter().enumerate() {
+            // In this case there is expected single spritesheet image
+            if let Some(ref tls_image) = tls.image {
+                let handle = match tilemap_asset.tilemap_textures.get(&tls_idx)
+                {
+                    Some(TilesetTexture::Single(handle)) => handle,
+                    _ => panic!("Error: tilemap spritesheet was not loaded!"),
+                };
+
+                let tile_size =
+                    Vec2::new(tls.tile_width as f32, tls.tile_height as f32);
+                let columns = tls.columns as usize;
+                let padding = Vec2::splat(tls.spacing as f32);
+                let rows = ((tls_image.height - tls.margin as i32 * 2)
+                    / (tls.tile_height + tls.spacing) as i32)
+                    as usize;
+                let offset =
+                    Vec2::new(tls.offset_x as f32, tls.offset_y as f32);
+                let atlas = TextureAtlas::from_grid(
+                    handle.clone(),
+                    tile_size,
+                    columns,
+                    rows,
+                    Some(padding),
+                    Some(offset),
+                );
+                let handle = texture_atlas_assets.add(atlas);
+                tilemap_asset.atlases.insert(tls_idx, handle);
+            } else {
+                // In this case there is expected vec with individual images
+                let handles = match tilemap_asset.tilemap_textures.get(&tls_idx)
+                {
+                    Some(TilesetTexture::Vector(handles)) => handles,
+                    _ => panic!("Error: individual images were not loaded!"),
+                };
+                // FIXME: detect required size of atlasbuilder
+                let mut atlas_builder = TextureAtlasBuilder::default()
+                    .max_size(Vec2::new(512. * 20., 512.));
+                // Individual image to tile-id offset container
+                let offsets = &tilemap_asset.tile_image_offsets;
+
+                // Because of `TextureAtlasBuilder` saves all images in random
+                // order, we need to check and save all image offsets in atlas.
+                let mut atlas_offsets = Vec::new();
+                // Pack images to atlas
+                for (tile_id, _) in tls.tiles() {
+                    let offset = offsets.get(&(tls_idx, tile_id)).unwrap();
+                    let handle = handles.get(*offset as usize).unwrap();
+                    let Some(texture) = textures.get(handle) else {
                     warn!("TextureAtlasBuilder: missing image: {:?}.",
                         asset_server.get_handle_path(handle));
                     continue;
                 };
-                info!(
-                    "Adding texture with offset {}, and id {} to atlas.",
-                    offset, tile_id
-                );
-                atlas_builder.add_texture(handle.clone(), texture);
-                atlas_offsets.push((tile_id, handle.clone()));
-            }
-            let atlas = atlas_builder
-                .finish(&mut textures)
-                .expect("Error: can't build atlas.");
+                    info!(
+                        "Adding texture with offset {}, and id {} to atlas.",
+                        offset, tile_id
+                    );
+                    atlas_builder.add_texture(handle.clone(), texture);
+                    atlas_offsets.push((tile_id, handle.clone()));
+                }
+                let atlas = atlas_builder
+                    .finish(&mut textures)
+                    .expect("Error: can't build atlas.");
 
-            // Write all atlas offsets to hashmap.
-            let mut offsets = HashMap::new();
-            for (tile_id, handle) in atlas_offsets {
-                offsets
-                    .insert(tile_id, atlas.get_texture_index(&handle).unwrap());
-            }
-            // We can have many individual-image based tilesets.
-            tilemap_asset.atlases_offsets.insert(tls_idx, offsets);
+                // Write all atlas offsets to hashmap.
+                let mut offsets = HashMap::new();
+                for (tile_id, handle) in atlas_offsets {
+                    offsets.insert(
+                        tile_id,
+                        atlas.get_texture_index(&handle).unwrap(),
+                    );
+                }
+                // We can have many individual-image based tilesets.
+                tilemap_asset.atlases_offsets.insert(tls_idx, offsets);
 
-            // Store atlas handle with it's tileset index into `tilemap_asset`.
-            let handle = texture_atlas_assets.add(atlas);
-            tilemap_asset.atlases.insert(tls_idx, handle);
+                // Store atlas handle with it's tileset index into `tilemap_asset`.
+                let handle = texture_atlas_assets.add(atlas);
+                tilemap_asset.atlases.insert(tls_idx, handle);
+            }
         }
+        tilemap_asset.atlases_loaded = true;
+        commands.entity(entity).insert(NeedToSpawn);
     }
-    next_state.set(TiledMapLoadState::Loaded);
+}
+
+fn system_despawn_maps(
+    mut commands: Commands,
+    despawned_tilemaps: Query<
+        (Entity, &TileStorage, &LayerStorage),
+        With<DespawnTiledMap>,
+    >,
+) {
+    // Despawn tilemaps
+    for (entity, tile_storage, layer_storage) in despawned_tilemaps.iter() {
+        for ecs_storage in tile_storage.bevy_ecs_tilemap_tile_storages.values()
+        {
+            for tile in ecs_storage.iter().flatten() {
+                // In `bevy_ecs_tilamap` there is no point to add childrens to
+                // it, they don't have `transform` component. That's why we
+                // call `despawn()` instead of `despawn_recursive()`.
+                commands.entity(*tile).despawn();
+            }
+        }
+        for tile in tile_storage.iter_all().flatten() {
+            commands.entity(*tile).despawn_recursive();
+        }
+        for layer in layer_storage.layers.values() {
+            // Layer has objects as children, despawn them too.
+            commands.entity(*layer).despawn_recursive();
+        }
+        // Map has no children except layers, which were already despawned.
+        commands.entity(entity).despawn();
+    }
 }
 
 fn system_process_loaded_maps(
     mut commands: Commands,
-    maps_events: EventReader<AssetEvent<TiledMapAsset>>,
     maps: ResMut<Assets<TiledMapAsset>>,
-    mut tile_map_query: Query<(
-        Entity,
-        &Handle<TiledMapAsset>,
-        &mut TileStorage,
-        &mut LayerStorage,
-    )>,
+    mut tile_map_query: Query<
+        (
+            Entity,
+            &Handle<TiledMapAsset>,
+            &mut TileStorage,
+            &mut LayerStorage,
+        ),
+        With<NeedToSpawn>,
+    >,
     asset_server: Res<AssetServer>,
     mut tiled_components: Res<TiledComponentResource>,
-    mut next_state: ResMut<NextState<TiledMapLoadState>>,
 ) {
-    // We get removed events when bevy asset system reloading our tilemap_asset
-    let (changed_maps, removed_maps) = events_to_vectors(maps_events);
-
-    // If we got one, respawn all map
-    for removed in removed_maps.iter() {
-        println!("REMOVED");
-        if let Some((asset_entity, _, _, _)) = tile_map_query
-            .iter()
-            .filter(|(_, handle, _, _)| handle.id() == removed.id())
-            .next()
-        {
-            commands.entity(asset_entity).insert(DespawnTiledMap);
-            next_state.set(TiledMapLoadState::Idle);
-        }
-    }
-
-    // Iter with changed maps, only existing in World for this update
-    let changed_existing = tile_map_query
-        .iter_mut()
-        .filter(|(_, handle, _, _)| changed_maps.contains(handle));
-
     for (map_entity, map_handle, mut tile_storage, mut layer_storage) in
-        changed_existing
+        tile_map_query.iter_mut()
     {
         // If handle is existing, get actual `TiledMap`
-        if let Some(tilemap_asset) = maps.get(map_handle) {
-            // Clear map from children
-            commands.entity(map_entity).clear_children();
-            // Iterate over layers
-            for (layer_idx, layer) in tilemap_asset.map.layers().enumerate() {
-                let layer_entity = spawn_layer(
-                    layer,
-                    layer_idx,
-                    &mut commands,
-                    &asset_server,
-                    tilemap_asset,
-                    &mut tiled_components,
-                    &mut tile_storage,
-                );
-                let layer_name = Name::new(layer.name.clone());
-
-                layer_storage
-                    .layers
-                    .insert(layer_name.clone(), layer_entity);
-                commands.entity(layer_entity).insert(layer_name);
-                commands.entity(map_entity).push_children(&[layer_entity]);
-            }
-        } else {
+        let Some(tilemap_asset) = maps.get(map_handle) else {
             log::warn!("Cant get tiled_map from Assets<TiledMap>!");
+            continue;
+        };
+
+        // Iterate over layers
+        for (layer_idx, layer) in tilemap_asset.map.layers().enumerate() {
+            let layer_entity = spawn_layer(
+                layer,
+                layer_idx,
+                &mut commands,
+                &asset_server,
+                tilemap_asset,
+                &mut tiled_components,
+                &mut tile_storage,
+            );
+            let layer_name = Name::new(layer.name.clone());
+
+            layer_storage
+                .layers
+                .insert(layer_name.clone(), layer_entity);
+            commands.entity(layer_entity).insert(layer_name);
+            commands
+                .entity(map_entity)
+                .push_children(&[layer_entity])
+                .remove::<NeedToSpawn>();
         }
     }
 }
@@ -281,16 +336,9 @@ fn spawn_with_bevy_ecs_tilemap(
     layer: &tiled::Layer,
     layer_idx: usize,
     tilemap_asset: &TiledMapAsset,
+    tile_storage: &mut TileStorage,
 ) -> Entity {
-    let layer_entity = commands
-        .spawn((
-            SpatialBundle {
-                transform: Transform::from_xyz(0., 0., layer_idx as f32),
-                ..default()
-            },
-            Name::from(layer.name.clone()),
-        ))
-        .id();
+    let layer_entity = commands.spawn((Name::from(layer.name.clone()),)).id();
     let layer_opacity = layer.opacity;
     match layer.layer_type() {
         tiled::LayerType::Tiles(layer) => match layer {
@@ -329,7 +377,7 @@ fn spawn_with_bevy_ecs_tilemap(
                     x: layer_data.width(),
                     y: layer_data.height(),
                 };
-                let mut tile_storage =
+                let mut ecs_tile_storage =
                     bevy_ecs_tilemap::prelude::TileStorage::empty(map_size);
 
                 for x in 0..map_size.x {
@@ -367,7 +415,7 @@ fn spawn_with_bevy_ecs_tilemap(
                                 ..default()
                             })
                             .id();
-                        tile_storage.set(&tile_pos, tile_entity);
+                        ecs_tile_storage.set(&tile_pos, tile_entity);
                         commands.entity(layer_entity).add_child(tile_entity);
                     }
                 }
@@ -388,7 +436,7 @@ fn spawn_with_bevy_ecs_tilemap(
                     grid_size,
                     map_type,
                     size: map_size,
-                    storage: tile_storage,
+                    storage: ecs_tile_storage.clone(),
                     texture,
                     tile_size,
                     transform: Transform::from_xyz(
@@ -398,6 +446,9 @@ fn spawn_with_bevy_ecs_tilemap(
                     ),
                     ..default()
                 });
+                tile_storage
+                    .bevy_ecs_tilemap_tile_storages
+                    .insert(layer_idx, ecs_tile_storage);
             }
         },
         _ => error!("bevy_ecs_tilemap supports only LayerType::Tiles layers!"),
@@ -416,13 +467,14 @@ fn spawn_layer(
 ) -> Entity {
     for (k, v) in &layer.properties {
         if k == "bevy_ecs_tilemap" {
-            if let tiled::PropertyValue::BoolValue(value) = v {
-                if *value {
+            if let tiled::PropertyValue::BoolValue(needs) = v {
+                if *needs {
                     return spawn_with_bevy_ecs_tilemap(
                         commands,
                         &layer,
                         layer_idx,
                         tilemap_asset,
+                        tile_storage,
                     );
                 }
             }
@@ -831,7 +883,7 @@ fn add_animation_if_needed(
     }
 }
 
-fn animate_entities(
+fn system_animate_entities(
     mut query: Query<(&mut Animation, &mut TextureAtlasSprite)>,
     time: Res<Time>,
 ) {
@@ -863,9 +915,8 @@ fn animate_entities(
 
 fn events_to_vectors(
     mut maps_events: EventReader<AssetEvent<TiledMapAsset>>,
-) -> (Vec<Handle<TiledMapAsset>>, Vec<Handle<TiledMapAsset>>) {
+) -> Vec<Handle<TiledMapAsset>> {
     let mut changed_maps = Vec::<Handle<TiledMapAsset>>::default();
-    let mut removed_maps = Vec::<Handle<TiledMapAsset>>::default();
     for event in maps_events.iter() {
         match event {
             AssetEvent::Created { handle } => {
@@ -878,12 +929,11 @@ fn events_to_vectors(
                 changed_maps.push(handle.clone_weak());
             }
             AssetEvent::Removed { handle } => {
-                removed_maps.push(handle.clone_weak());
                 log::info!("Map removed!");
             }
         }
     }
-    (changed_maps, removed_maps)
+    changed_maps
 }
 
 fn tiled_color_to_bevy(color: &tiled::Color) -> Color {

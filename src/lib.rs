@@ -9,6 +9,9 @@
 //! 1. Add the [TiledToolkitPlugin](self::plugin::TiledToolkitPlugin) to the [App].
 //! 2. Spawn a [TiledMapBundle](self::plugin::TiledMapBundle):
 //! ```
+//! use bevy::prelude::*;
+//! use bevy_tiled_toolkit::prelude::*;
+//!
 //! fn system_spawn_map(
 //!     mut commands: Commands,
 //!     asset_server: Res<AssetServer>,
@@ -30,13 +33,27 @@
 //! these instructions:
 //! 1. Declare your custom component:
 //! ```
+//! use bevy::prelude::*;
+//!
 //! #[derive(Component, Default)]
 //! struct Ninja {
 //!     strength: f32,
 //! }
 //! ```
-//! 2. Implement [TiledComponent] trait for your type:
+//! 2. Implement [TiledComponent] trait for your type and register your type
+//! in the [App]:
 //! ```
+//! use bevy::prelude::*;
+//! use bevy::ecs::system::EntityCommands;
+//! use bevy::utils::HashMap;
+//! use bevy::log;
+//! use bevy_tiled_toolkit::prelude::*;
+//!
+//! #[derive(Component, Default)]
+//! struct Ninja {
+//!     strength: f32,
+//! }
+//!
 //! impl TiledComponent for Ninja {
 //!     fn insert_self_to_entity(
 //!         &self,
@@ -47,7 +64,7 @@
 //!         for (key, value) in values {
 //!             if key == String::from("strength") {
 //!                 let tiled::PropertyValue::FloatValue(v) = value else {
-//!                     error!("Cant spawn Ninja, wrong PropertyValue type");
+//!                     log::error!("Cant spawn Ninja, wrong PropertyValue type");
 //!                     continue;
 //!                 };
 //!                 commands.insert(Ninja { strength: v });
@@ -58,14 +75,13 @@
 //!         "Ninja"
 //!     }
 //! }
+//!
+//! let mut app = App::new();
+//! app.register_tiled_component::<Ninja>();
 //! ```
-//! 3. Register your type in the [App]:
-//! ```
-//! app.register_tiled_component::<Ninja>()
-//! ```
-//! 4. In `Tiled`, in the `Class` field of your tile, insert the same name
+//! 3. In `Tiled`, in the `Class` field of your tile, insert the same name
 //! that `get_class_name` function returns.
-//! 5. Create properties in `Tiled` for your tile, and they will be passed to
+//! 4. Create properties in `Tiled` for your tile, and they will be passed to
 //! `insert_self_to_entity` function, where you can use them to initialize your
 //! component.
 //!
@@ -76,15 +92,19 @@
 //! * Only tile layers supported.
 //! * Each tile should have the same size.
 //! * One layer should use only one tilemap at the same time.
+//! * You can't implement YSorting with tiles spawned with `bevy_ecs_tilemap`,
+//! because it's impossible to change transform for each tile independently:
+//! `bevy_ecs_tilemap` glue together all tiles into one big image.
 //!
 //! At the same time it is recommended to render at least the base layer with
 //! [bevy_ecs_tilemap](https://github.com/StarArawn/bevy_ecs_tilemap)
-//! (because base layer usually completely filled with sprites).
+//! (because base layer usually completely filled with tiles and don't need
+//! YSorting).
 //!
 //! If you spawn each tile as just [TextureAtlas]'es on such layer, perfomance will
 //! be poor on mobile devices and low-end computers, especially on medium-sized
-//! and big-sized maps.
-//! There will be tile-flicker when moving camera on iphone 8, if map is bigger then 50x50.
+//! and big-sized maps, (there will be tile-flicker when moving camera on
+//! iphone 8, for example) if map is bigger then 50x50.
 //! [TextureAtlas]'es based rendering works good for tile layers, where there
 //! are not too many tiles, and, naturally, `Object layers` can be rendered
 //! only with [TextureAtlas]'es.
@@ -97,6 +117,10 @@
 //! Spawn a [DespawnTilemap](self::components::DespawnTiledMap) component to an
 //! entity with `Handle<TiledMapAsset>` to despawn the tilemap:
 //! ```
+//! use bevy::prelude::*;
+//! use bevy_tiled_toolkit::asset_loader::TiledMapAsset;
+//! use bevy_tiled_toolkit::components::DespawnTiledMap;
+//!
 //! fn system_despawn_map(
 //!     mut commands: Commands,
 //!     input: Res<Input<KeyCode>>,
@@ -147,6 +171,7 @@ pub mod prelude {
     pub use crate::components::DespawnTiledMap;
     pub use crate::plugin::TiledMapBundle;
     pub use crate::plugin::TiledToolkitPlugin;
+    pub use crate::TiledComponent;
 }
 
 /// Spawn your components with specific tiles or objects from Tiled.
@@ -155,6 +180,12 @@ pub mod prelude {
 /// to `Class` field in tile's properties in Tiled.
 ///
 /// ```
+/// use bevy::prelude::*;
+/// use bevy::ecs::system::EntityCommands;
+/// use bevy::utils::HashMap;
+/// use bevy::log;
+/// use bevy_tiled_toolkit::TiledComponent;
+///
 /// #[derive(Component, Default)]
 /// struct Ninja {
 ///     strength: f32,
@@ -165,11 +196,12 @@ pub mod prelude {
 ///         &self,
 ///         commands: &mut EntityCommands,
 ///         values: HashMap<String, tiled::PropertyValue>,
+///         asset_server: &Res<AssetServer>,
 ///     ) {
 ///         for (key, value) in values {
 ///             if key == String::from("strength") {
 ///                 let tiled::PropertyValue::FloatValue(v) = value else {
-///                     error!("Cant spawn Ninja, wrong PropertyValue type");
+///                     log::error!("Cant spawn Ninja, wrong PropertyValue type");
 ///                     continue;
 ///                 };
 ///                 println!("Spawning ninja!");
@@ -184,6 +216,14 @@ pub mod prelude {
 /// ```
 /// Then your can query for `TextureAtlasSprite` of this tile or object:
 /// ```
+/// use bevy::prelude::*;
+/// use bevy_tiled_toolkit::asset_loader::TiledMapAsset;
+///
+/// #[derive(Component, Default)]
+/// struct Ninja {
+///     strength: f32,
+/// }
+///
 /// fn color_ninja(
 ///     mut ninja_query: Query<&mut TextureAtlasSprite, With<Ninja>>,
 ///     time: Res<Time>,
