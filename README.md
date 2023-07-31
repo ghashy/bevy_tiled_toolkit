@@ -6,7 +6,7 @@ Bevy version: `0.11.0`.
 > 🚧 This project is under development, and is currently lacking some critical features
 
 ### Getting starged
-This plugin allows to use almost every features from `Tiled` map editor in
+This plugin allows to use almost every feature from `Tiled` map editor in
 in your Bevy-game.
 
 Follow these steps to start:
