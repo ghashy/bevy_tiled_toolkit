@@ -103,8 +103,8 @@
 //!
 //! If you spawn each tile as just [TextureAtlas]'es on such layer, perfomance will
 //! be poor on mobile devices and low-end computers, especially on medium-sized
-//! and big-sized maps, (there will be tile-flicker when moving camera on
-//! iphone 8, for example) if map is bigger then 50x50.
+//! and big-sized maps (there will be tile-flicker when moving camera on
+//! iphone 8, if map is bigger then 50x50, for example).
 //! [TextureAtlas]'es based rendering works good for tile layers, where there
 //! are not too many tiles, and, naturally, `Object layers` can be rendered
 //! only with [TextureAtlas]'es.
