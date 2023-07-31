@@ -87,7 +87,7 @@ enum TiledMapLoadState {
 fn system_check_asset_state(
     mut commands: Commands,
     mut tilemap_query: Query<
-        (&Handle<TiledMapAsset>, &mut TileStorage, &LayerStorage),
+        (&Handle<TiledMapAsset>, &mut TileStorage, &mut LayerStorage),
         Without<NeedToSpawn>,
     >,
     mut tilemaps: ResMut<Assets<TiledMapAsset>>,
@@ -99,27 +99,31 @@ fn system_check_asset_state(
         .iter_mut()
         .filter(|(handle, _, _)| changed_maps.contains(handle));
 
-    for (tilemap_handle, mut tile_storage, layer_storage) in changed_existing {
-        for ecs_storage in tile_storage.bevy_ecs_tilemap_tile_storages.values()
-        {
-            for tile in ecs_storage.iter().flatten() {
-                // In `bevy_ecs_tilamap` there is no point to add childrens to
-                // it, they don't have `transform` component. That's why we
-                // call `despawn()` instead of `despawn_recursive()`.
-                commands.entity(*tile).despawn();
-            }
-        }
-        for tile in tile_storage.iter_all().flatten() {
-            commands.entity(*tile).despawn_recursive();
-        }
+    for (tilemap_handle, mut tile_storage, mut layer_storage) in
+        changed_existing
+    {
+        // for ecs_storage in tile_storage.bevy_ecs_tilemap_tile_storages.values()
+        // {
+        //     for tile in ecs_storage.iter().flatten() {
+        //         // In `bevy_ecs_tilamap` there is no point to add childrens to
+        //         // it, they don't have `transform` component. That's why we
+        //         // call `despawn()` instead of `despawn_recursive()`.
+        //         commands.entity(*tile).despawn();
+        //     }
+        // }
+        // for tile in tile_storage.iter_all().flatten() {
+        //     commands.entity(*tile).despawn();
+        // }
         // Clear storages
-        tile_storage.clear();
-        tile_storage.bevy_ecs_tilemap_tile_storages.clear();
 
         for layer in layer_storage.layers.values() {
             // Layer has objects as children, despawn them too.
             commands.entity(*layer).despawn_recursive();
         }
+
+        tile_storage.clear();
+        tile_storage.bevy_ecs_tilemap_tile_storages.clear();
+        layer_storage.layers.clear();
 
         if let Some(tilemap_asset) = tilemaps.get_mut(tilemap_handle) {
             tilemap_asset.atlases_loaded = false;
@@ -323,6 +327,8 @@ fn spawn_with_bevy_ecs_tilemap(
 ) -> Entity {
     let layer_entity = commands.spawn_empty().id();
     let layer_opacity = layer.opacity;
+    let offset_x = layer.offset_x;
+    let offset_y = layer.offset_y;
     match layer.layer_type() {
         tiled::LayerType::Tiles(layer) => match layer {
             tiled::TileLayer::Infinite(_) => {
@@ -427,6 +433,8 @@ fn spawn_with_bevy_ecs_tilemap(
                             tile_width as f32 * 0.5,
                             tile_height as f32 * 0.5,
                             layer_idx as f32,
+                        ) * Transform::from_xyz(
+                            offset_x, -offset_y, 0.0,
                         ),
                         ..default()
                     })
@@ -478,6 +486,8 @@ fn spawn_layer(
         },))
         .id();
     let layer_opacity = layer.opacity;
+    let offset_x = layer.offset_x;
+    let offset_y = layer.offset_y;
     match layer.layer_type() {
         tiled::LayerType::Tiles(layer) => {
             match layer {
@@ -547,6 +557,8 @@ fn spawn_layer(
                                                 (mapped_y * tile_height) as f32
                                                     + tile_height as f32 * 0.5,
                                                 1.,
+                                            ) * Transform::from_xyz(
+                                                offset_x, -offset_y, 0.0,
                                             ),
                                             sprite: TextureAtlasSprite {
                                                 index: layer_tile_data.id()

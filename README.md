@@ -117,6 +117,7 @@ fn system_despawn_map(
 ## What supported:
 - [x] Tile layers
 - [x] Object layers
+- [x] Layer offsets
 - [x] Tiled animation is played in bevy
 - [x] Spritesheet-based tilesets and individual-image-based tilesets
 - [x] Spawning custom components with particular tiles entities with `TiledComponent` trait
@@ -130,7 +131,6 @@ fn system_despawn_map(
 
 ## What is not supported temporarily:
 * Isometric, Staggered and Hexagonal maps
-* Layer offsets
 * Layer parallax factors
 * Image layers
 * Group layers
