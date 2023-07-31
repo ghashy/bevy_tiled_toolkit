@@ -254,30 +254,13 @@ fn system_setup_atlases(
 
 fn system_despawn_maps(
     mut commands: Commands,
-    despawned_tilemaps: Query<
-        (Entity, &TileStorage, &LayerStorage),
-        With<DespawnTiledMap>,
-    >,
+    despawned_tilemaps: Query<(Entity, &LayerStorage), With<DespawnTiledMap>>,
 ) {
     // Despawn tilemaps
-    for (entity, tile_storage, layer_storage) in despawned_tilemaps.iter() {
-        for ecs_storage in tile_storage.bevy_ecs_tilemap_tile_storages.values()
-        {
-            for tile in ecs_storage.iter().flatten() {
-                // In `bevy_ecs_tilamap` there is no point to add childrens to
-                // it, they don't have `transform` component. That's why we
-                // call `despawn()` instead of `despawn_recursive()`.
-                commands.entity(*tile).despawn();
-            }
-        }
-        for tile in tile_storage.iter_all().flatten() {
-            commands.entity(*tile).despawn_recursive();
-        }
+    for (entity, layer_storage) in despawned_tilemaps.iter() {
         for layer in layer_storage.layers.values() {
-            // Layer has objects as children, despawn them too.
             commands.entity(*layer).despawn_recursive();
         }
-        // Map has no children except layers, which were already despawned.
         commands.entity(entity).despawn();
     }
 }
@@ -338,7 +321,7 @@ fn spawn_with_bevy_ecs_tilemap(
     tilemap_asset: &TiledMapAsset,
     tile_storage: &mut TileStorage,
 ) -> Entity {
-    let layer_entity = commands.spawn((Name::from(layer.name.clone()),)).id();
+    let layer_entity = commands.spawn_empty().id();
     let layer_opacity = layer.opacity;
     match layer.layer_type() {
         tiled::LayerType::Tiles(layer) => match layer {
@@ -416,7 +399,6 @@ fn spawn_with_bevy_ecs_tilemap(
                             })
                             .id();
                         ecs_tile_storage.set(&tile_pos, tile_entity);
-                        commands.entity(layer_entity).add_child(tile_entity);
                     }
                 }
 
@@ -432,20 +414,29 @@ fn spawn_with_bevy_ecs_tilemap(
                 let grid_size = tile_size.into();
                 let map_type = TilemapType::default();
 
-                commands.entity(layer_entity).insert(TilemapBundle {
-                    grid_size,
-                    map_type,
-                    size: map_size,
-                    storage: ecs_tile_storage.clone(),
-                    texture,
-                    tile_size,
-                    transform: Transform::from_xyz(
-                        tile_width as f32 * 0.5,
-                        tile_height as f32 * 0.5,
-                        1.,
-                    ),
-                    ..default()
-                });
+                commands
+                    .entity(layer_entity)
+                    .insert(TilemapBundle {
+                        grid_size,
+                        map_type,
+                        size: map_size,
+                        storage: ecs_tile_storage.clone(),
+                        texture,
+                        tile_size,
+                        transform: Transform::from_xyz(
+                            tile_width as f32 * 0.5,
+                            tile_height as f32 * 0.5,
+                            layer_idx as f32,
+                        ),
+                        ..default()
+                    })
+                    .push_children(
+                        &ecs_tile_storage
+                            .iter()
+                            .flatten()
+                            .map(|&e| e)
+                            .collect::<Vec<_>>()[..],
+                    );
                 tile_storage
                     .bevy_ecs_tilemap_tile_storages
                     .insert(layer_idx, ecs_tile_storage);
@@ -481,13 +472,10 @@ fn spawn_layer(
         }
     }
     let layer_entity = commands
-        .spawn((
-            SpatialBundle {
-                transform: Transform::from_xyz(0., 0., layer_idx as f32),
-                ..default()
-            },
-            Name::from(layer.name.clone()),
-        ))
+        .spawn((SpatialBundle {
+            transform: Transform::from_xyz(0., 0., layer_idx as f32),
+            ..default()
+        },))
         .id();
     let layer_opacity = layer.opacity;
     match layer.layer_type() {
