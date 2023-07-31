@@ -6,7 +6,7 @@ Bevy version: `0.11.0`.
 > 🚧 This project is under development, and is currently lacking some critical features
 
 ### Getting starged
-This plugin allows to use almost every features from `Tiled` map editor in
+This plugin allows to use almost every feature from `Tiled` map editor in
 in your Bevy-game.
 
 Follow these steps to start:
@@ -80,15 +80,15 @@ but there are some limitations:
 * Only tile layers supported.
 * Each tile should have the same size.
 * One layer should use only one tilemap at the same time.
+* You can’t implement YSorting with tiles spawned with [bevy_ecs_tilemap](https://github.com/StarArawn/bevy_ecs_tilemap), because it’s impossible to change transform for each tile independently: bevy_ecs_tilemap glue together all tiles into one big image.
 
 At the same time it is recommended to render at least the base layer with
 [bevy_ecs_tilemap](https://github.com/StarArawn/bevy_ecs_tilemap)
-(because base layer usually completely filled with sprites).
+(because base layer usually completely filled with tiles and don’t need YSorting).
 
 If you spawn each tile as just `TextureAtlas`'es on such layer, perfomance will
 be poor on mobile devices and low-end computers, especially on medium-sized
-and big-sized maps.
-There will be tile-flicker when moving camera on iphone 8, if map is bigger then 50x50.
+and big-sized maps, (there will be tile-flicker when moving camera on iphone 8, if map is bigger then 50x50, for example).
 `TextureAtlas`'es based rendering works good for tile layers, where there
 are not too many tiles, and, naturally, `Object layers` can be rendered
 only with `TextureAtlas`'es.
